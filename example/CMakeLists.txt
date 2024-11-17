@@ -27,8 +27,8 @@ project(morelib_example)
 FetchContent_Populate(freertos)
 set(FREERTOS_DIR ${freertos_SOURCE_DIR})
 
-get_filename_component(MORELIB_DIR ".." ABSOLUTE)
-include(${MORELIBC_DIR}/ports/rp2/pico-sdk.cmake)
+get_filename_component(MORELIBC_DIR ".." ABSOLUTE)
+include(${MORELIBC_DIR}/rp2/pico-sdk.cmake)
 
 include(${MORELIBC_DIR}/cmake/picolibc.cmake)
 

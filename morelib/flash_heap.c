@@ -5,14 +5,13 @@
 #include <fcntl.h>
 #include <memory.h>
 #include <stdio.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include "morelib/flash_heap.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
-
-#include "newlib/flash_heap.h"
-#include "newlib/ioctl.h"
 
 
 extern uint8_t __StackLimit;

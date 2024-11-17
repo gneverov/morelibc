@@ -5,15 +5,13 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/unistd.h>
-
-#include "newlib/thread.h"
-#include "newlib/newlib.h"
-#include "newlib/vfs.h"
+#include <unistd.h>
+#include "morelib/thread.h"
+#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
+
 
 static SemaphoreHandle_t vfs_mutex;
 
@@ -459,32 +457,6 @@ exit:
         vfs_release_file(prev_file);
     }
     return fd;
-}
-
-int dup(int oldfd) {
-    int flags = 0;
-    struct vfs_file *old_file = vfs_acquire_file(oldfd, &flags);
-    if (!old_file) {
-        return -1;
-    }
-    int ret = vfs_replace(-1, old_file, flags);
-    vfs_release_file(old_file);
-    return ret;
-}
-
-int dup2(int oldfd, int newfd) {
-    if ((uint)newfd >= VFS_FD_MAX) {
-        errno = EBADF;
-        return -1;
-    }
-    int flags = 0;
-    struct vfs_file *old_file = vfs_acquire_file(oldfd, &flags);
-    if (!old_file) {
-        return -1;
-    }
-    int ret = vfs_replace(newfd, old_file, flags);
-    vfs_release_file(old_file);
-    return ret;
 }
 
 __attribute__((destructor(200)))

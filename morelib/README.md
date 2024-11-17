@@ -5,31 +5,6 @@ In addition to picolibc or newlib-nano, morelib depends on FreeRTOS and the Rasp
 
 The following functions with 🟢 status are implemented.
 
-## Newlib "syscalls"
-| Function | Status | Notes |
-| - | - | - |
-| `close` | 🟢 | |
-| `execve` | 🔴 | No multiple processes. |
-| `_exit` | 🟢 | |
-| [`fcntl`](https://man7.org/linux/man-pages/man3/fcntl.3p.html) | 🔴 | `DUP` can be done with `dup` function.<br>`GETFD`/`GETFL` not interesting enough.<br>File locks not supported.|
-| `fork` | 🔴 | No multiple processes. |
-| `fstat` | 🟢 | |
-| `getpid` | 🟢 | Returns FreeRTOS task number. |
-| `gettimeofday` | 🟢 | Implemented by Pico SDK. |
-| `isatty` | 🟢 | |
-| `kill` | 🟢 | No multiple processes, so equivalent to `raise`. |
-| `link` | 🔴 | Embedded filesystems are unlikely to support links. |
-| `lseek` | 🟢 | |
-| `mkdir` | 🟢 | |
-| `open` | 🟢 | |
-| `read` | 🟢 | |
-| `rename` | 🟢 | |
-| `sbrk` | 🟢 | Implemented by Pico SDK. |
-| `stat` | 🟢 | |
-| `times` | 🟢 | Implemented by Pico SDK. |
-| `unlink` | 🟢 | |
-| `write` | 🟢 | |
-| `wait` | 🔴 | No multiple processes. |
 
 ## dirent.h
 | Function | Status | Notes |
@@ -39,17 +14,58 @@ The following functions with 🟢 status are implemented.
 | `dirfd` | 🔴 | |
 | `fdopendir` | 🟢 | |
 | `opendir` | 🟢 | |
-| `scandir` | 🔴 | |
 | `readdir` | 🟢 | |
 | `rewinddir` | 🟢 | |
+| `scandir` | 🔴 | |
+| `seekdir` | 🔴 | |
+| `telldir` | 🔴 | |
+
+## dlfcn.h
+| Function | Status | Notes |
+| dladdr | 🔴 | |
+| dlclose | 🟢 | |
+| dlerror | 🟢 | |
+| dlopen | 🟢 | |
+| dlsym | 🟢 | |
 
 ## fcntl.h
 | Function | Status | Notes |
 | - | - | - |
 | `creat` | 🔴 | |
-| `fcntl` | 🔴 | Defined by newlib |
-| `open` | 🟢 | Defined by newlib |
+| `fcntl` | 🟢 | Only supports `F_GETFL`/`F_SETFL`. |
+| `open` | 🟢 | |
 | `openat` | 🔴 | |
+| `rename` | 🟢 | |
+| `renameat` | 🔴 | |
+
+## poll.h
+| Function | Status | Notes |
+| - | - | - |
+| `poll` | 🟢 | |
+| `ppoll` | 🔴 | No signal mask. |
+
+## sys/ioctl.h
+| Function | Status | Notes |
+| - | - | - |
+| `ioctl` | 🟢 | Not POSIX. |
+
+## sys/mman.h
+| Function | Status | Notes |
+| - | - | - |
+| `mmap` | 🟢 | |
+| `mprotect` | 🔴 | |
+| `munmap` | 🟢 | No-op. All memory mappings are static. |
+
+## sys/random.h
+| Function | Status | Notes |
+| - | - | - |
+| `getrandom` | 🟢 | Implemented by port. Not POSIX. |
+
+## sys/select.h
+| Function | Status | Notes |
+| - | - | - |
+| `pselect` | 🔴 | No signal mask. |
+| `select` | 🔴 | |
 
 ## sys/stat.h
 | Function | Status | Notes |
@@ -57,15 +73,17 @@ The following functions with 🟢 status are implemented.
 | `chmod` | 🔴 | |
 | `fchmod` | 🔴 | |
 | `fchmodat` | 🔴 | |
-| `fstat` | 🟢 | Defined by newlib |
+| `fstat` | 🟢 | |
 | `fstatat` | 🔴 | |
 | `futimens` | 🔴 | |
-| `lstat` | 🔴 | No symbolic links |
-| `mkdir` | 🟢 | Defined by newlib  |
+| `lstat` | 🔴 | No symbolic links. |
+| `mkdir` | 🟢 | |
 | `mkdirat` | 🔴 | |
 | `mkfifo` | 🔴 | |
 | `mkfifoat` | 🔴 | |
-| `stat` | 🟢 | Defined by newlib  |
+| `mknod` | 🔴 | |
+| `mknodat` | 🔴 | |
+| `stat` | 🟢 | |
 | `umask` | 🔴 | |
 | `utimensat` | 🔴 | |
 
@@ -78,76 +96,130 @@ The following functions with 🟢 status are implemented.
 ## sys/time.h
 | Function | Status | Notes |
 | - | - | - |
+| `gettimeofday` | 🟢 | Implemented by port. Obsolete. |
+| `settimeofday` | 🟢 | Implemented by port. Not POSIX. |
 | `utimes` | 🔴 | |
 
-## sys/unistd.h
+## sys/times.h
 | Function | Status | Notes |
 | - | - | - |
-| `access` | 🔴 | No users or groups |
-| `alarm`  | 🔴 | |
-| `chdir` | 🟢 | |
-| `chown` | 🔴 | No users or groups |
-| `close` | 🟢 | Defined by newlib |
-| `confstr` | 🔴 | No conf |
-| `dup`<br>`dup2` | 🟢 | |
-| `_exit` | 🟢 | Defined by newlib |
-| `execl`<br>`execle`<br>`execlp`<br>`execv`<br>`execve`<br>`execvp`| 🔴 | No multiple processes |
-| `faccessat` | 🔴 | No users or groups |
-| `fchdir` | 🔴 | |
-| `fchown` | 🔴 | No users or groups |
-| `fchownat` | 🔴 | No users or groups |
-| `fexecve` | 🔴 | No multiple processes |
-| `fork` | 🔴 | No multiple processes<br>Defined by newlib |
-| `fpathconf` | 🔴 | No conf |
-| `fsync` | 🟢 | |
-| `ftruncate` | 🟢 | |
-| `getcwd` | 🟢 | |
-| `getegid`<br>`geteuid`<br>`getgid`<br>`getuid`<br>`setegid`<br>`seteuid`<br>`setgid`<br>`setuid` | 🔴 | No users or groups |
-| `getgroups` | 🔴 | No users or groups |
-| `gethostname` | 🟢 | Uses `HOSTNAME` environment variable|
-| `getlogin` | 🔴 | No users or groups |
-| `getopt` |  🔴 | No opt |
-| `getpgid`<br>`getpgrp`<br>`getsid`<br>`setpgid`<br>`setsid` | 🔴 | No multiple processes |
-| `getpid` | 🟢 | Defined by newlib |
-| `getppid` | 🔴 | |
-| `isatty` | 🟢 | Defined by newlib |
-| `lchown` | 🔴 | No symbolic links |
-| `link` | 🔴 | No links<br>Defined by newlib |
-| `linkat` | 🔴 | No links |
-| `lseek` | 🟢 | Defined by newlib |
-| `pathconf` | 🔴 | No conf |
-| `pause` | 🔴 | |
-| `pipe` | 🔴 | |
-| `pread`<br>`pwrite` | 🟢 | |
-| `read` | 🟢 | Defined by newlib |
-| `readlink`<br>`readlinkat` | 🔴 | No symbolic links |
-| `rmdir` | 🟢 | |
-| `sleep` | 🟢 | |
-| `symlink`<br>`symlinkat` | 🔴 | No symbolic links |
-| `sysconf` | 🔴 | No conf |
-| `tcgetpgrp`<br>`tcsetpgrp` | 🔴 | No multiple processes |
-| `truncate` | 🟢 | |
-| `ttyname` | 🔴 | |
-| `unlink` | 🟢 | Defined by newlib |
-| `unlinkat` | 🔴 | | 
-| `write` | 🟢 | Defined by newlib |
+| `times` | 🟢 | Implemented by port. |
+
+## sys/utsname.h
+| Function | Status | Notes |
+| - | - | - |
+| `uname` | 🟢 | |
+
+## termios.h
+| Function | Status | Notes |
+| - | - | - |
+| cfgetispeed | 🟢 | |
+| cfgetospeed | 🟢 | |
+| cfsetispeed | 🟢 | |
+| cfsetospeed | 🟢 | |
+| tcdrain | 🟢 | |
+| tcflow | 🟢 | |
+| tcflush | 🟢 | |
+| tcgetattr | 🟢 | |
+| tcgetsid | 🔴 | |
+| tcgetwinsize | 🔴 | |
+| tcsendbreak | 🟢 | |
+| tcsetattr | 🟢 | |
+| tcsetwinsize | 🔴 | |
 
 ## time.h
 | Function | Status | Notes |
 | - | - | - |
-| `asctime` | 🟢 | Defined by newlib |
-| `clock` | 🟢 | Defined by newlib |
-| `ctime` | 🟢 | Defined by newlib |
-| `difftime` | 🟢 | Defined by newlib |
+| `asctime` | 🟢 | Implemented by Picolibc. Obsolete. |
+| `clock` | 🟢 | Implemented by Picolibc. |
+| `clock_getres` | 🔴 | |
+| `clock_gettime` | 🔴 | |
+| `clock_nanosleep` | 🔴 | |
+| `clock_settime` | 🔴 | |
+| `ctime` | 🟢 | Implemented by Picolibc. Obsolete. |
+| `difftime` | 🟢 | Implemented by Picolibc. |
 | `getdate` | 🔴 | | 
-| `gmtime` | 🟢 | Defined by newlib |
-| `localtime` | 🟢 | Defined by newlib |
-| `mktime` | 🟢 | Defined by newlib |
+| `gmtime` | 🟢 | Implemented by Picolibc. |
+| `gmtime_r` | 🟢 | Implemented by Picolibc. |
+| `localtime` | 🟢 | Implemented by Picolibc. |
+| `localtime_r` | 🟢 | Implemented by Picolibc. |
+| `mktime` | 🟢 | Implemented by Picolibc. |
 | `nanosleep` | 🟢 | |
-| `strftime` | 🟢 | Defined by newlib |
-| `strptime` | 🟢 | Defined by newlib |
-| `time` | 🟢 | Defined by newlib |
-| `tzset` | 🟢 | Defined by newlib |
+| `strftime` | 🟢 | Implemented by Picolibc. |
+| `strftime_l` | 🟢 | Implemented by Picolibc. |
+| `strptime` | 🟢 | Implemented by Picolibc. |
+| `time` | 🟢 | Implemented by Picolibc. |
+| `timer_create` | 🔴 | |
+| `timer_delete` | 🔴 | |
+| `timer_getoverrun` | 🔴 | |
+| `timer_gettime` | 🔴 | |
+| `timer_settime` | 🔴 | |
+| `timespec_get` | 🔴 | |
+| `tzset` | 🟢 | Implemented by Picolibc. |
+
+## unistd.h
+| Function | Status | Notes |
+| - | - | - |
+| `access` | 🔴 | No users or groups. |
+| `alarm`  | 🟢 | |
+| `chdir` | 🟢 | |
+| `chown` | 🔴 | No users or groups. |
+| `close` | 🟢 | |
+| `confstr` | 🔴 | No conf. |
+| `crypt` | 🔴 | |
+| `dup` | 🟢 | |
+| `dup2` | 🟢 | |
+| `dup3` | 🔴 | |
+| `_exit` | 🟢 | |
+| `execl`<br>`execle`<br>`execlp`<br>`execv`<br>`execve`<br>`execvp`| 🔴 | No multiple processes. |
+| `faccessat` | 🔴 | No users or groups. |
+| `fchdir` | 🔴 | |
+| `fchown` | 🔴 | No users or groups. |
+| `fchownat` | 🔴 | No users or groups. |
+| `fexecve` | 🔴 | No multiple processes. |
+| `fork` | 🔴 | No multiple processes. |
+| `fpathconf` | 🔴 | No conf. |
+| `fsync` | 🟢 | |
+| `ftruncate` | 🟢 | |
+| `getcwd` | 🟢 | |
+| `getentropy` | 🟢 | |
+| `getegid`<br>`geteuid`<br>`getgid`<br>`getuid`<br>`setegid`<br>`seteuid`<br>`setgid`<br>`setuid` | 🔴 | No users or groups. |
+| `getgroups` | 🔴 | No users or groups. |
+| `gethostid` | 🔴 | |
+| `gethostname` | 🟢 | Returns `HOSTNAME` environment variable. |
+| `getlogin` | 🔴 | No users or groups. |
+| `getopt` |  🔴 | No opt. |
+| `getpgid`<br>`getpgrp`<br>`getsid`<br>`setpgid`<br>`setsid` | 🔴 | No multiple processes. |
+| `getpid` | 🟢 | Returns 0. |
+| `getppid` | 🔴 | |
+| `isatty` | 🟢 | |
+| `lchown` | 🔴 | No symbolic links. |
+| `link` | 🔴 | No hard links. |
+| `linkat` | 🔴 | No hard links. |
+| `lockf` | 🔴 | No file locks. |
+| `lseek` | 🟢 | |
+| `nice` | 🔴 | |
+| `pathconf` | 🔴 | No conf. |
+| `pause` | 🔴 | |
+| `pipe` | 🟢 | |
+| `pipe2` | 🔴 | |
+| `posix_close` | 🔴 | |
+| `pread`<br>`pwrite` | 🟢 | |
+| `read` | 🟢 | |
+| `readlink`<br>`readlinkat` | 🔴 | No symbolic links. |
+| `rmdir` | 🟢 | |
+| `sleep` | 🟢 | |
+| `swab` | 🟢 | Implemented by Picolibc. |
+| `symlink`<br>`symlinkat` | 🔴 | No symbolic links. |
+| `sync` | 🟢 | |
+| `sysconf` | 🔴 | No conf |
+| `tcgetpgrp`<br>`tcsetpgrp` | 🔴 | No multiple processes. |
+| `truncate` | 🟢 | |
+| `ttyname` | 🔴 | |
+| `unlink` | 🟢 | |
+| `unlinkat` | 🔴 | | 
+| `write` | 🟢 | |
+
 
 # Environment variables
 The environment variables are stored in flash memory and are persistent across resets and reflashes of the firmware. They are useful for storing small pieces of information that are needed before or without a filesystem being mounted.

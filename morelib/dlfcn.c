@@ -10,8 +10,7 @@
 #include <string.h>
 #include <sys/param.h>
 #include <unistd.h>
-#include "newlib/dlfcn.h"
-#include "newlib/flash_heap.h"
+#include "morelib/dlfcn.h"
 
 #pragma GCC diagnostic ignored "-Wformat-truncation"
 
@@ -702,7 +701,7 @@ void *dlopen(const char *file, int mode) {
     return NULL;
 }
 
-int dlclose(const void *handle) {
+int dlclose(void *handle) {
     return 0;
 }
 
@@ -737,7 +736,7 @@ static void *dlsym_one(const flash_heap_header_t *header, const char *name) {
     return NULL;
 }
 
-void *dlsym(const void *handle, const char *name) {
+void *dlsym(void *handle, const char *name) {
     const flash_heap_header_t *header = handle;
     if (handle) {
         return dlsym_one(header, name);

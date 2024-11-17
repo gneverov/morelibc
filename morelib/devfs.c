@@ -7,10 +7,10 @@
 #include <malloc.h>
 #include <string.h>
 #include <unistd.h>
+#include "morelib/dev.h"
+#include "morelib/devfs.h"
+#include "morelib/vfs.h"
 
-#include "newlib/dev.h"
-#include "newlib/devfs.h"
-#include "newlib/vfs.h"
 
 // Filesystem
 // ----------

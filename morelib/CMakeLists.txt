@@ -5,22 +5,30 @@ add_library(morelib_core INTERFACE)
 target_sources(morelib_core INTERFACE
     dev.c
     devfs.c
+    dirent.c
     dlfcn.c
     event.c
+    fcntl.c
     flash_env.c
     flash_heap.c
+    ioctl.c
     lock.c
     mem.c
+    mman.c
     mtdblk.c
-    newlib.c
     pipe.c
     poll.c
-    posix.c
     random.c
     ring.c
+    signal.c
+    stat.c
+    statvfs.c
     termios.c
     thread.c
+    time.c
     tty.c
+    unistd.c
+    utsname.c
     vfs.c
 )
 

@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include <errno.h>
-
-#include "newlib/dev.h"
-#include "newlib/tty.h"
-#include "newlib/vfs.h"
+#include "morelib/dev.h"
+#include "morelib/tty.h"
 
 
 static void *tty_open(const void *ctx, dev_t dev, int flags, mode_t mode) {

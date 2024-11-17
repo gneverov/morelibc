@@ -7,13 +7,12 @@
 #include <sys/mman.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include "morelib/ioctl.h"
+#include "morelib/mtd.h"
+#include "morelib/mtdblk.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
-
-#include "newlib/ioctl.h"
-#include "newlib/mtd.h"
-#include "newlib/mtdblk.h"
 
 
 static struct mtdblk_file *mtdblk_files[MTDBLK_NUM_DEVICES];

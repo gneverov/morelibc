@@ -4,4 +4,4 @@ project(morelib)
 
 add_subdirectory(freertos)
 add_subdirectory(morelib)
-add_subdirectory(ports/rp2)
+add_subdirectory(rp2)

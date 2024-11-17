@@ -6,9 +6,8 @@
 #include <malloc.h>
 #include <sys/random.h>
 #include <unistd.h>
-
-#include "newlib/dev.h"
-#include "newlib/mem.h"
+#include "morelib/dev.h"
+#include "morelib/mem.h"
 
 
 static int mem_close(void *ctx) {

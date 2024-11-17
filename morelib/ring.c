@@ -4,7 +4,7 @@
 #include <malloc.h>
 #include <memory.h>
 #include <sys/param.h>
-#include "newlib/ring.h"
+#include "morelib/ring.h"
 
 
 void *ring_alloc(ring_t *ring, uint log2_size) {

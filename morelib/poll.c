@@ -3,8 +3,8 @@
 
 #include <malloc.h>
 #include <poll.h>
-#include "newlib/thread.h"
-#include "newlib/vfs.h"
+#include "morelib/thread.h"
+#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "task.h"

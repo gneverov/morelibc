@@ -3,8 +3,8 @@
 
 #include <memory.h>
 #include <poll.h>
+#include <sys/ioctl.h>
 #include <termios.h>
-#include "newlib/ioctl.h"
 
 
 speed_t cfgetispeed(const struct termios *termios_p) {

@@ -4,9 +4,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <malloc.h>
-#include <poll.h>
-#include "newlib/newlib.h"
-#include "newlib/vfs.h"
+#include "morelib/poll.h"
+#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "task.h"

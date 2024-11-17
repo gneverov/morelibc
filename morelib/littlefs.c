@@ -6,11 +6,10 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <string.h>
-#include <sys/unistd.h>
-
-#include "newlib/ioctl.h"
-#include "newlib/mtd.h"
-#include "newlib/vfs.h"
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "morelib/mtd.h"
+#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"

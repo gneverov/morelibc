@@ -3,8 +3,7 @@
 
 #include <errno.h>
 #include <malloc.h>
-
-#include "newlib/thread.h"
+#include "morelib/thread.h"
 
 
 // Global mutex for thread operations

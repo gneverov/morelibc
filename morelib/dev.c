@@ -3,8 +3,8 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include "newlib/dev.h"
-#include "newlib/vfs.h"
+#include "morelib/dev.h"
+#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"

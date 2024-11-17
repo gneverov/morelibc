@@ -10,10 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <sys/unistd.h>
-
-#include "newlib/ioctl.h"
-#include "newlib/vfs.h"
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include "morelib/vfs.h"
 
 #include "ff.h"
 #include "diskio.h"

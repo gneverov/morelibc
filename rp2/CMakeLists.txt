@@ -9,13 +9,12 @@ target_sources(morelib_rp2 INTERFACE
 	flash_lockout.c
     gpio.c
     irq.c
-	mtd.c
+    mtd.c
     pio.c
     pwm.c
     sdcard.c
     spi.c
     term_uart.c
-    time.c
     uart.c
 )
 
@@ -29,12 +28,17 @@ target_link_libraries(morelib_rp2 INTERFACE
 	hardware_pwm
 	hardware_spi
 	hardware_uart
-    pico_aon_timer
 	pico_runtime
 )
 
-target_link_options(morelib_rp2 INTERFACE
-    LINKER:--wrap=settimeofday
+add_library(pico_morelibc_interface INTERFACE)
+
+target_sources(pico_morelibc_interface INTERFACE morelibc_interface.c)
+
+target_link_libraries(pico_morelibc_interface INTERFACE 
+    pico_aon_timer
+    pico_runtime_init
+    pico_time
 )
 
 if(PICO_CYW43_SUPPORTED)

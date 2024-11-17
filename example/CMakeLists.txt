@@ -5,7 +5,7 @@ include(FetchContent)
 FetchContent_Declare(
     pico-sdk
     GIT_REPOSITORY https://github.com/gneverov/pico-sdk
-    GIT_TAG fefae27d9cb0cf18bf7bc2e697a4dbc587736864
+    GIT_TAG efe2103f9b28458a1615ff096054479743ade236
 )
 
 FetchContent_Declare(

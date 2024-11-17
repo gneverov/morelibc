@@ -1,4 +1,4 @@
-set(PICO_CLIB picolibc)
+set(PICO_CLIB morelibc)
 set(PICO_STDIO_UART OFF)
 message("before PICO_CLIB ${PICO_CLIB}")
 pico_sdk_init()

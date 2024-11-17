@@ -12,14 +12,9 @@ static rp2_pio_handler_t rp2_pio_handlers[NUM_PIOS][NUM_PIO_INTERRUPT_SOURCES];
 static void *rp2_pio_contexts[NUM_PIOS][NUM_PIO_INTERRUPT_SOURCES];
 
 
-PIO rp2_pio(uint pio_index) {
-    valid_params_if(HARDWARE_PIO, pio_index < NUM_PIOS);
-    return PIO_INSTANCE(pio_index);
-}
-
 static void rp2_pio_irq_handler(uint pio_index, uint irq) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    PIO pio = rp2_pio(pio_index);
+    PIO pio = PIO_INSTANCE(pio_index);
     for (int i = 0; i < NUM_PIO_INTERRUPT_SOURCES; i++) {
         if (pio->ints0 & (1 << i)) {
             assert(rp2_pio_handlers[pio_index][i]);

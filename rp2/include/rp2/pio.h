@@ -10,8 +10,6 @@
 #define NUM_PIO_INTERRUPT_SOURCES 12
 
 
-PIO rp2_pio(uint pio_index);
-
 typedef void (*rp2_pio_handler_t)(PIO pio, enum pio_interrupt_source source, void *context, BaseType_t *pxHigherPriorityTaskWoken);
 
 void rp2_pio_init(void);

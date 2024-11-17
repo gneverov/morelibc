@@ -10,19 +10,20 @@
 #include "rp2/fifo.h"
 #include "rp2/spi.h"
 
-struct pico_spi pico_spis_ll[NUM_SPIS] = {
+
+struct rp2_spi rp2_spis[NUM_SPIS] = {
     { .inst = spi0, 0 },
     { .inst = spi1, 0 },
 };
 
 __attribute__((constructor, visibility("hidden")))
-void pico_spi_init(void) {
+void rp2_spi_init(void) {
     for (int i = 0; i < NUM_SPIS; i++) {
-        pico_spis_ll[i].mutex = xSemaphoreCreateMutexStatic(&pico_spis_ll[i].buffer);
+        rp2_spis[i].mutex = xSemaphoreCreateMutexStatic(&rp2_spis[i].buffer);
     }
 }
 
-BaseType_t pico_spi_take(pico_spi_t *spi, TickType_t xBlockTime) {
+BaseType_t rp2_spi_take(rp2_spi_t *spi, TickType_t xBlockTime) {
     TimeOut_t timeout;
     vTaskSetTimeOutState(&timeout);
     if (xSemaphoreTake(spi->mutex, xBlockTime) == pdFALSE) {
@@ -46,7 +47,7 @@ BaseType_t pico_spi_take(pico_spi_t *spi, TickType_t xBlockTime) {
     }
 }
 
-BaseType_t pico_spi_take_to_isr(pico_spi_t *spi) {
+BaseType_t rp2_spi_take_to_isr(rp2_spi_t *spi) {
     assert(xQueueGetMutexHolder(spi->mutex) == xTaskGetCurrentTaskHandle());
     assert(spi->mutex_holder == NULL);
     taskENTER_CRITICAL();
@@ -55,7 +56,7 @@ BaseType_t pico_spi_take_to_isr(pico_spi_t *spi) {
     return xSemaphoreGive(spi->mutex);
 }
 
-void pico_spi_give_from_isr(pico_spi_t *spi, BaseType_t *pxHigherPriorityTaskWoken) {
+void rp2_spi_give_from_isr(rp2_spi_t *spi, BaseType_t *pxHigherPriorityTaskWoken) {
     assert(spi->in_isr);
     UBaseType_t state = taskENTER_CRITICAL_FROM_ISR();
     spi->in_isr = 0;
@@ -66,7 +67,7 @@ void pico_spi_give_from_isr(pico_spi_t *spi, BaseType_t *pxHigherPriorityTaskWok
     }
 }
 
-BaseType_t pico_spi_give(pico_spi_t *spi) {
+BaseType_t rp2_spi_give(rp2_spi_t *spi) {
     assert(xQueueGetMutexHolder(spi->mutex) == xTaskGetCurrentTaskHandle());
     return xSemaphoreGive(spi->mutex);
 }

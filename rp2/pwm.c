@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Gregory Neverov
 // SPDX-License-Identifier: MIT
 
-#include "hardware/pwm.h"
-
 #include "rp2/pwm.h"
 
 
 #ifndef NDEBUG
 #include <stdio.h>
 
-void pico_pwm_debug(uint slice) {
+void rp2_pwm_debug(uint slice) {
     check_slice_num_param(slice);
     pwm_slice_hw_t *hw = &pwm_hw->slice[slice];
     printf("pwm slice %u\n", slice);

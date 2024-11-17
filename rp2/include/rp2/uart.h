@@ -8,8 +8,8 @@
 #include "hardware/uart.h"
 
 
-typedef void (*pico_uart_handler_t)(uart_inst_t *uart, void *context, BaseType_t *pxHigherPriorityTaskWoken);
+typedef void (*rp2_uart_handler_t)(uart_inst_t *uart, void *context, BaseType_t *pxHigherPriorityTaskWoken);
 
-void pico_uart_set_irq(uart_inst_t *uart, pico_uart_handler_t handler, void *context);
+void rp2_uart_set_irq(uart_inst_t *uart, rp2_uart_handler_t handler, void *context);
 
-void pico_uart_clear_irq(uart_inst_t *uart);
+void rp2_uart_clear_irq(uart_inst_t *uart);

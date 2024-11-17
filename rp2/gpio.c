@@ -3,52 +3,50 @@
 
 #include "rp2/gpio.h"
 
-#include "hardware/gpio.h"
-
 #include "freertos/interrupts.h"
 #include "semphr.h"
 
-static pico_gpio_handler_t pico_gpio_handlers[NUM_BANK0_GPIOS];
-static void *pico_gpio_contexts[NUM_BANK0_GPIOS];
+static rp2_gpio_handler_t rp2_gpio_handlers[NUM_BANK0_GPIOS];
+static void *rp2_gpio_contexts[NUM_BANK0_GPIOS];
 
-static void pico_gpio_irq_handler(uint gpio, uint32_t event_mask) {
-    assert(pico_gpio_handlers[gpio]);
-    pico_gpio_handlers[gpio](gpio, event_mask, pico_gpio_contexts[gpio]);
+static void rp2_gpio_irq_handler(uint gpio, uint32_t event_mask) {
+    assert(rp2_gpio_handlers[gpio]);
+    rp2_gpio_handlers[gpio](gpio, event_mask, rp2_gpio_contexts[gpio]);
 }
 
 __attribute__((constructor, visibility("hidden")))
-void pico_gpio_init(void) {
+void rp2_gpio_init(void) {
     assert(check_interrupt_core_affinity());
-    gpio_set_irq_callback(pico_gpio_irq_handler);
+    gpio_set_irq_callback(rp2_gpio_irq_handler);
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
-void pico_gpio_set_irq_enabled(uint gpio, uint32_t events, bool enabled) {
+void rp2_gpio_set_irq_enabled(uint gpio, uint32_t events, bool enabled) {
     UBaseType_t save = set_interrupt_core_affinity();
     gpio_set_irq_enabled(gpio, events, enabled);
     clear_interrupt_core_affinity(save);
 }
 
-bool pico_gpio_add_handler(uint gpio, pico_gpio_handler_t handler, void *context) {
+bool rp2_gpio_add_handler(uint gpio, rp2_gpio_handler_t handler, void *context) {
     UBaseType_t save = set_interrupt_core_affinity();
     bool ret = false;
-    if (!pico_gpio_handlers[gpio]) {
+    if (!rp2_gpio_handlers[gpio]) {
         gpio_set_irq_enabled(gpio, 0xf, false);
-        pico_gpio_handlers[gpio] = handler;
-        pico_gpio_contexts[gpio] = context;
+        rp2_gpio_handlers[gpio] = handler;
+        rp2_gpio_contexts[gpio] = context;
         ret = true;
     }
     clear_interrupt_core_affinity(save);
     return ret;
 }
 
-bool pico_gpio_remove_handler(uint gpio) {
+bool rp2_gpio_remove_handler(uint gpio) {
     UBaseType_t save = set_interrupt_core_affinity();
     bool ret = false;
-    if (pico_gpio_handlers[gpio]) {
+    if (rp2_gpio_handlers[gpio]) {
         gpio_set_irq_enabled(gpio, 0xf, false);
-        pico_gpio_handlers[gpio] = NULL;
-        pico_gpio_contexts[gpio] = NULL;
+        rp2_gpio_handlers[gpio] = NULL;
+        rp2_gpio_contexts[gpio] = NULL;
         ret = true;
     }
     clear_interrupt_core_affinity(save);
@@ -58,7 +56,7 @@ bool pico_gpio_remove_handler(uint gpio) {
 #ifndef NDEBUG
 #include <stdio.h>
 
-void pico_gpio_debug(uint gpio) {
+void rp2_gpio_debug(uint gpio) {
     check_gpio_param(gpio);
     io_bank0_irq_ctrl_hw_t *irq_ctrl_base = &io_bank0_hw->proc0_irq_ctrl + INTERRUPT_CORE_NUM;
     printf("gpio %u\n", gpio);
@@ -79,7 +77,7 @@ void pico_gpio_debug(uint gpio) {
     uint32_t status = irq_ctrl_base->ints[gpio / 8];
     status >>= 4 * (gpio % 8);
     printf("  ints:        0x%02lx\n", status & 0xf);
-    printf("  handler:     %p\n", pico_gpio_handlers[gpio]);
-    printf("  context:     %p\n", pico_gpio_contexts[gpio]);
+    printf("  handler:     %p\n", rp2_gpio_handlers[gpio]);
+    printf("  context:     %p\n", rp2_gpio_contexts[gpio]);
 }
 #endif

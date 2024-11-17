@@ -10,38 +10,38 @@
 #include "hardware/dma.h"
 
 
-typedef struct pico_fifo pico_fifo_t;
+typedef struct rp2_fifo rp2_fifo_t;
 
-typedef void (*pico_fifo_handler_t)(pico_fifo_t *fifo, const ring_t *ring, BaseType_t *pxHigherPriorityTaskWoken);
+typedef void (*rp2_fifo_handler_t)(rp2_fifo_t *fifo, const ring_t *ring, BaseType_t *pxHigherPriorityTaskWoken);
 
-struct pico_fifo {
+struct rp2_fifo {
     ring_t ring;
     int channel;
     uint trans_count;
     enum dma_channel_transfer_size transfer_size;
     bool tx;
-    pico_fifo_handler_t handler;
+    rp2_fifo_handler_t handler;
     uint int_count;
 };
 
-void pico_fifo_init(pico_fifo_t *fifo, bool tx, pico_fifo_handler_t handler);
+void rp2_fifo_init(rp2_fifo_t *fifo, bool tx, rp2_fifo_handler_t handler);
 
-bool pico_fifo_alloc(pico_fifo_t *fifo, uint fifo_size, uint dreq, enum dma_channel_transfer_size dma_transfer_size, bool bswap, volatile void *target_addr);
+bool rp2_fifo_alloc(rp2_fifo_t *fifo, uint fifo_size, uint dreq, enum dma_channel_transfer_size dma_transfer_size, bool bswap, volatile void *target_addr);
 
-void pico_fifo_deinit(pico_fifo_t *fifo);
+void rp2_fifo_deinit(rp2_fifo_t *fifo);
 
-void pico_fifo_exchange(pico_fifo_t *fifo, ring_t *ring, size_t usr_count);
+void rp2_fifo_exchange(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count);
 
-void pico_fifo_exchange_from_isr(pico_fifo_t *fifo, ring_t *ring, size_t usr_count);
+void rp2_fifo_exchange_from_isr(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count);
 
-size_t pico_fifo_transfer(pico_fifo_t *fifo, void *buffer, size_t size);
+size_t rp2_fifo_transfer(rp2_fifo_t *fifo, void *buffer, size_t size);
 
-void pico_fifo_clear(pico_fifo_t *fifo);
+void rp2_fifo_clear(rp2_fifo_t *fifo);
 
-void pico_fifo_set_enabled(pico_fifo_t *fifo, bool enable);
+void rp2_fifo_set_enabled(rp2_fifo_t *fifo, bool enable);
 
-// bool pico_fifo_get_enabled(pico_fifo_t *fifo);
+// bool rp2_fifo_get_enabled(rp2_fifo_t *fifo);
 
 #ifndef NDEBUG
-void pico_fifo_debug(const pico_fifo_t *fifo);
+void rp2_fifo_debug(const rp2_fifo_t *fifo);
 #endif

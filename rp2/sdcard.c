@@ -22,7 +22,7 @@
 static struct sdcard_file {
     struct vfs_file base;
     off_t ptr;
-    pico_spi_t *spi;
+    rp2_spi_t *spi;
     uint cs_pin;
     uint baudrate;
     size_t num_blocks;
@@ -208,7 +208,7 @@ static void *sdcard_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
         return NULL;
     }
     vfs_file_init(&file->base, &sdcard_vtable, mode | S_IFBLK);
-    file->spi = &pico_spis_ll[spi_num];
+    file->spi = &rp2_spis[spi_num];
     file->cs_pin = cs_pin;
     file->baudrate = 400000;
     gpio_init(file->cs_pin);
@@ -285,14 +285,14 @@ static uint sdcard_crc16(uint8_t *buf, size_t len, uint crc) {
 
 static void sdcard_resume(struct sdcard_file *file) {
     gpio_put(file->cs_pin, true);
-    pico_spi_give(file->spi);
+    rp2_spi_give(file->spi);
 }
 
 static bool sdcard_wait(struct sdcard_file *file, TickType_t xTicksToWait) {
     TimeOut_t xTimeOut;
     vTaskSetTimeOutState(&xTimeOut);
     do {
-        if (!pico_spi_take(file->spi, xTicksToWait)) {
+        if (!rp2_spi_take(file->spi, xTicksToWait)) {
             break;
         }
         spi_set_baudrate(file->spi->inst, file->baudrate);

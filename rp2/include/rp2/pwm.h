@@ -3,4 +3,7 @@
 
 #pragma once
 
-void pico_pwm_debug(uint slice);
+#include "hardware/pwm.h"
+
+
+void rp2_pwm_debug(uint slice);

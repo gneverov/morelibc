@@ -5,12 +5,13 @@
 
 #include "hardware/gpio.h"
 
-typedef void (*pico_gpio_handler_t)(uint gpio, uint32_t event_mask, void *context);
 
-void pico_gpio_set_irq_enabled(uint gpio, uint32_t events, bool enabled);
+typedef void (*rp2_gpio_handler_t)(uint gpio, uint32_t event_mask, void *context);
 
-bool pico_gpio_add_handler(uint gpio, pico_gpio_handler_t handler, void *context);
+void rp2_gpio_set_irq_enabled(uint gpio, uint32_t events, bool enabled);
 
-bool pico_gpio_remove_handler(uint gpio);
+bool rp2_gpio_add_handler(uint gpio, rp2_gpio_handler_t handler, void *context);
 
-void pico_gpio_debug(uint gpio);
+bool rp2_gpio_remove_handler(uint gpio);
+
+void rp2_gpio_debug(uint gpio);

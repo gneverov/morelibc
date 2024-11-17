@@ -7,14 +7,15 @@
 
 #include "hardware/dma.h"
 
-typedef void (*pico_dma_handler_t)(uint channel, void *context, BaseType_t *pxHigherPriorityTaskWoken);
 
-void pico_dma_init(void);
+typedef void (*rp2_dma_handler_t)(uint channel, void *context, BaseType_t *pxHigherPriorityTaskWoken);
 
-void pico_dma_set_irq(uint channel, pico_dma_handler_t handler, void *context);
+void rp2_dma_init(void);
 
-void pico_dma_clear_irq(uint channel);
+void rp2_dma_set_irq(uint channel, rp2_dma_handler_t handler, void *context);
 
-void pico_dma_acknowledge_irq(uint channel);
+void rp2_dma_clear_irq(uint channel);
 
-void pico_dma_debug(uint channel);
+void rp2_dma_acknowledge_irq(uint channel);
+
+void rp2_dma_debug(uint channel);

@@ -6,6 +6,6 @@
 #include "hardware/irq.h"
 
 
-void pico_irq_set_enabled(uint num, bool enabled);
+void rp2_irq_set_enabled(uint num, bool enabled);
 
-void pico_irq_remove_handler(uint num, irq_handler_t handler);
+void rp2_irq_remove_handler(uint num, irq_handler_t handler);

@@ -27,7 +27,7 @@ typedef struct {
     uint tx_pin;
     uint rx_pin;
     SemaphoreHandle_t mutex;
-    pico_fifo_t tx_fifo;
+    rp2_fifo_t tx_fifo;
     ring_t rx_fifo;
     struct termios termios;
     uint cooked_state;
@@ -67,7 +67,7 @@ static void term_uart_handler(uart_inst_t *uart, void *ctx, BaseType_t *pxHigher
     }
 }
 
-static void term_uart_tx_handler(pico_fifo_t *fifo, const ring_t *ring, BaseType_t *pxHigherPriorityTaskWoken) {
+static void term_uart_tx_handler(rp2_fifo_t *fifo, const ring_t *ring, BaseType_t *pxHigherPriorityTaskWoken) {
     term_uart_t *file = (void *)fifo - offsetof(term_uart_t, tx_fifo);
     uint events = 0;
     if (ring_write_count(ring) >= (ring->size / 4)) {
@@ -83,7 +83,7 @@ static void term_uart_tx_handler(pico_fifo_t *fifo, const ring_t *ring, BaseType
 
 static void term_uart_file_deinit(term_uart_t *file) {
     if (file->uart) {
-        pico_uart_clear_irq(file->uart);
+        rp2_uart_clear_irq(file->uart);
         uart_deinit(file->uart);
         // Pull tx pin high to prevent noise for the receiver
         gpio_set_pulls(file->tx_pin, true, false);
@@ -91,7 +91,7 @@ static void term_uart_file_deinit(term_uart_t *file) {
         gpio_deinit(file->rx_pin);
         file->uart = NULL;
     }
-    pico_fifo_deinit(&file->tx_fifo);
+    rp2_fifo_deinit(&file->tx_fifo);
     ring_free(&file->rx_fifo);
     vSemaphoreDelete(file->mutex);
 }
@@ -120,7 +120,7 @@ static int term_uart_ioctl(void *ctx, unsigned long request, va_list args) {
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     switch (request) {
         case TCFLSH: {
-            pico_fifo_clear(&file->tx_fifo);
+            rp2_fifo_clear(&file->tx_fifo);
             file->rx_fifo.read_index = file->rx_fifo.write_index;
             ret = 0;
         }
@@ -152,7 +152,7 @@ static uint term_uart_poll(void *ctx) {
         events |= POLLIN | POLLRDNORM;
     }
     ring_t ring;
-    pico_fifo_exchange(&file->tx_fifo, &ring, 0);
+    rp2_fifo_exchange(&file->tx_fifo, &ring, 0);
     if (ring_write_count(&ring) >= (ring.size / 4)) {
         events |= POLLOUT | POLLWRNORM;
     }
@@ -178,7 +178,7 @@ static int term_uart_read(void *ctx, void *buffer, size_t size) {
 static int term_uart_write(void *ctx, const void *buffer, size_t size) {
     term_uart_t *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
-    int ret = pico_fifo_transfer(&file->tx_fifo, (void *)buffer, size);
+    int ret = rp2_fifo_transfer(&file->tx_fifo, (void *)buffer, size);
     if (!ret) {
         errno = EAGAIN;
         ret = -1;
@@ -203,10 +203,10 @@ static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, ui
     file->tx_pin = tx_pin;
     file->rx_pin = rx_pin;
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
-    pico_fifo_init(&file->tx_fifo, true, term_uart_tx_handler);
+    rp2_fifo_init(&file->tx_fifo, true, term_uart_tx_handler);
     termios_init(&file->termios, baudrate);
 
-    if (!pico_fifo_alloc(&file->tx_fifo, 512, uart_get_dreq(uart, true), DMA_SIZE_8, false, &uart_get_hw(uart)->dr)) {
+    if (!rp2_fifo_alloc(&file->tx_fifo, 512, uart_get_dreq(uart, true), DMA_SIZE_8, false, &uart_get_hw(uart)->dr)) {
         return -1;
     }
     if (!ring_alloc(&file->rx_fifo, 9)) {
@@ -217,7 +217,7 @@ static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, ui
     uart_init(uart, baudrate);
     gpio_set_function(rx_pin, GPIO_FUNC_UART);
     gpio_set_function(tx_pin, GPIO_FUNC_UART);
-    pico_uart_set_irq(uart, term_uart_handler, file);
+    rp2_uart_set_irq(uart, term_uart_handler, file);
     uart_set_irqs_enabled(uart, true, false);
     return 0;
 }

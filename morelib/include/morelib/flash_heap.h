@@ -9,6 +9,8 @@
 
 #define FLASH_HEAP_NUM_DEVICES 2
 
+#define FIRMWARE_FLASH_HEAP_TYPE 0x10001
+
 
 typedef uintptr_t flash_ptr_t;
 
@@ -54,6 +56,8 @@ static inline const flash_heap_header_t *flash_heap_get_header(const flash_heap_
 }
 
 int flash_heap_seek(flash_heap_t *file, flash_ptr_t pos);
+
+int flash_heap_set_ram_end(flash_heap_t *file, flash_ptr_t pos);
 
 int flash_heap_trim(flash_heap_t *file, flash_ptr_t pos);
 

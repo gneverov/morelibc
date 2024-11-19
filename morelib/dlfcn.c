@@ -289,16 +289,17 @@ error:
 
 __attribute__((visibility("hidden")))
 void *dl_load(const char *file, uint device) {
-    dl_loader_t loader = { 0 };
     int fd = open(file, O_RDONLY, 0);
     if (fd < 0) {
         strcpy(dl_error_msg, "file error");
-        goto cleanup;
+        dl_seterror();
+        return NULL;
     }
 
     size_t start_flash_size[FLASH_HEAP_NUM_DEVICES], start_ram_size;
     flash_heap_stats(start_flash_size, &start_ram_size);
 
+    dl_loader_t loader = { 0 };
     if (dl_loader_open(&loader, device) < 0) {
         goto cleanup;
     }
@@ -379,8 +380,17 @@ static int do_phdrs(dl_linker_t *linker) {
         }
         switch (phdr.p_type) {
             case PT_LOAD:
-                if (flash_heap_seek(&loader->heap, phdr.p_vaddr + phdr.p_memsz) < 0) {
-                    return -1;
+                switch (phdr.p_vaddr >> 28) {
+                    case 0x01:
+                        if (flash_heap_seek(&loader->heap, phdr.p_vaddr + phdr.p_memsz) < 0) {
+                            return -1;
+                        }
+                        break;
+                    case 0x02:
+                        if (flash_heap_set_ram_end(&loader->heap, phdr.p_vaddr + phdr.p_memsz) < 0) {
+                            return -1;
+                        }
+                        break;
                 }
                 break;
             case PT_DYNAMIC:
@@ -660,13 +670,14 @@ int dl_linker_write(const dl_linker_t *linker, const void *buffer, size_t length
 
 __attribute__((visibility("hidden")))
 void *dl_realloc(const dl_linker_t *linker, void *ptr, size_t size) {
-    return flash_heap_realloc_with_evict(&linker->loader->heap, ptr, size);
+    // return flash_heap_realloc_with_evict(&linker->loader->heap, ptr, size);
+    return realloc(ptr, size);
 }
 
 
 bool dl_iterate(const flash_heap_header_t **header) {
     bool result = flash_heap_iterate(0, header);
-    while (result && ((*header)->type != DL_FLASH_HEAP_TYPE)) {
+    while (result && ((*header)->type != DL_FLASH_HEAP_TYPE) && ((*header)->type != FIRMWARE_FLASH_HEAP_TYPE)) {
         result = flash_heap_iterate(0, header);
     }
     return result && (*header < dl_last_loaded);

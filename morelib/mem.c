@@ -41,10 +41,6 @@ static off_t mem_lseek(void *ctx, off_t offset, int whence) {
 
 static int mem_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     struct mem_file *file = ctx;
-    if (offset < 0) {
-        errno = EINVAL;
-        return -1;
-    }
     switch (file->dev) {
         case DEV_MEM:
             memcpy(buffer, (void *)offset, size);

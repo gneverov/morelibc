@@ -58,4 +58,4 @@ endif()
 
 # Set linker script files
 set(RP2_EXE_LD_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_exe_${PICO_PLATFORM}.ld)
-set(RP2_LIB_LD_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/ memmap_lib_${PICO_PLATFORM}.ld)
+set(RP2_LIB_LD_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_lib_${PICO_PLATFORM}.ld)

@@ -208,7 +208,7 @@ off_t lseek(int fd, off_t offset, int whence) {
     if (file->func->lseek) {
         ret = file->func->lseek(file, offset, whence);
     } else {
-        errno = S_ISCHR(file->mode) ? ESPIPE : ENOSYS;
+        errno = S_ISDIR(file->mode) ? EISDIR : ESPIPE;
     }
     vfs_release_file(file);
     return ret;
@@ -228,7 +228,7 @@ ssize_t pread(int fd, void *buffer, size_t size, off_t offset) {
         return -1;
     }
     int ret = -1;
-    if (file->func->read) {
+    if (file->func->pread) {
         do {
             ret = file->func->pread(file, buffer, size, offset);
         }
@@ -254,7 +254,7 @@ ssize_t pwrite(int fd, const void *buffer, size_t size, off_t offset) {
         return -1;
     }
     int ret = -1;
-    if (file->func->write) {
+    if (file->func->pwrite) {
         do {
             ret = file->func->pwrite(file, buffer, size, offset);
         }

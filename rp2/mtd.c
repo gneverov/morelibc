@@ -182,10 +182,6 @@ static int mtd_rread(struct mtd_file *file, void *buffer, size_t size, off_t *of
 
 static int mtd_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     struct mtd_file *file = ctx;
-    if (offset < 0) {
-        errno = EINVAL;
-        return -1;
-    }
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     int result = mtd_rread(file, buffer, size, &offset);
     xSemaphoreGive(file->mutex);

@@ -112,7 +112,7 @@ int flash_heap_open(flash_heap_t *file, uint device, uint32_t type) {
 
     file->ram_start = (flash_ptr_t)tail->ram_base;
     file->ram_end = file->ram_start;
-    // file->ram_limit = (flash_ptr_t)&__StackLimit;
+    file->ram_limit = (flash_ptr_t)&__StackLimit;
     return 0;
 }
 
@@ -164,7 +164,7 @@ int flash_heap_seek(flash_heap_t *file, flash_ptr_t pos) {
     return 0;
 }
 
-int flash_heap_set_ram(flash_heap_t *file, flash_ptr_t pos) {
+int flash_heap_set_ram_end(flash_heap_t *file, flash_ptr_t pos) {
     if (pos < file->ram_start) {
         errno = EINVAL;
         return -1;
@@ -181,7 +181,8 @@ int flash_heap_trim(flash_heap_t *file, flash_ptr_t pos) {
     if (flash_heap_seek(file, pos) < 0) {
         return -1;
     }
-    if (ftruncate(file->fd, file->flash_pos - file->flash_base) < 0) {
+    uint64_t range[2] = { file->flash_pos, file->flash_limit };
+    if (ioctl(file->fd, BLKDISCARD, range) < 0) {
         return -1;
     }
     return 0;
@@ -192,26 +193,31 @@ flash_ptr_t flash_heap_align(flash_ptr_t addr, size_t align) {
     return (addr + align - 1) & ~(align - 1);
 }
 
-int flash_heap_pwrite(flash_heap_t *file, const void *buffer, size_t length, flash_ptr_t pos) {
-    return pwrite(file->fd, buffer, length, pos - file->flash_base);
-}
-
 int flash_heap_pread(flash_heap_t *file, void *buffer, size_t length, flash_ptr_t pos) {
+    length = MIN(length, file->flash_end - pos);
     return pread(file->fd, buffer, length, pos - file->flash_base);
-}
-
-int flash_heap_write(flash_heap_t *file, const void *buffer, size_t size) {
-    int ret = flash_heap_pwrite(file, buffer, size, file->flash_pos);
-    if (ret < 0) {
-        return -1;
-    }
-    file->flash_pos += ret;
-    file->flash_end = MAX(file->flash_end, file->flash_pos);
-    return ret;
 }
 
 int flash_heap_read(flash_heap_t *file, void *buffer, size_t size) {
     int ret = flash_heap_pread(file, buffer, size, file->flash_pos);
+    if (ret < 0) {
+        return -1;
+    }
+    file->flash_pos += ret;
+    return ret;
+}
+
+int flash_heap_pwrite(flash_heap_t *file, const void *buffer, size_t length, flash_ptr_t pos) {
+    int ret = pwrite(file->fd, buffer, length, pos - file->flash_base);
+    if (ret < 0) {
+        return -1;
+    }
+    file->flash_end = MAX(file->flash_end, pos + ret);
+    return ret;
+}
+
+int flash_heap_write(flash_heap_t *file, const void *buffer, size_t size) {
+    int ret = pwrite(file->fd, buffer, size, file->flash_pos - file->flash_base);
     if (ret < 0) {
         return -1;
     }
@@ -245,7 +251,7 @@ int flash_heap_truncate(uint device, const flash_heap_header_t *header) {
         return -1;
     }
     if (!header) {
-        header = flash_heap_head[device];
+        while (flash_heap_iterate(device, &header) && (header->type == FIRMWARE_FLASH_HEAP_TYPE));
     }
 
     int ret = -1;

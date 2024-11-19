@@ -122,7 +122,7 @@ except:
 #         ("entry", ctypes.c_void_p),
 #     ]
 buf = bytearray(flash_heap.data)
-buf[0:4] = int(1).to_bytes(4, "little")
+buf[0:4] = int(0x10001).to_bytes(4, "little")
 buf[4:8] = (flash_heap_end.struct.sh_addr - flash_heap.struct.sh_addr).to_bytes(4, "little")
 buf[16:20] = dynamic.struct.sh_addr.to_bytes(4, "little")
 flash_heap.data = buf

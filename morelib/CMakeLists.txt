@@ -80,7 +80,7 @@ endif()
 # ---
 # Modifies a firmware executable to support dynamic linking
 # TARGET - the firmware executable to create and modify
-function(add_firmware_executable TARGET)
+function(add_dynamic_executable TARGET)
     add_executable(${TARGET} ${ARGN})
     target_link_options(${TARGET} PRIVATE
         LINKER:--gc-keep-exported
@@ -129,7 +129,7 @@ function(add_dynamic_library TARGET)
         -fvisibility=hidden
     )
     target_sources(${TARGET} PRIVATE
-        ${MICROPY_PORT_DIR}/newlib/dl_init.c
+        ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/dl_init.c
     )
     add_custom_command(
         TARGET ${TARGET} POST_BUILD
@@ -143,17 +143,3 @@ function(add_dynamic_library TARGET)
         pico_add_uf2_output(${TARGET})
     endif()
 endfunction()
-
-
-# Targets for extracting objects out of libc
-# ---
-# Execute "ar t" to list objects in libc archive
-execute_process(COMMAND ${CMAKE_AR} t ${PICOLIBC_SYSROOT}/lib/${PICOLIBC_BUILDTYPE}/libc.a OUTPUT_VARIABLE LIBC_OBJS )
-separate_arguments(LIBC_OBJS UNIX_COMMAND ${LIBC_OBJS})
-
-# Extract object files ("ar x") into output directory
-add_custom_target(extract_libc
-    COMMAND ${CMAKE_AR} x ${PICOLIBC_SYSROOT}/lib/${PICOLIBC_BUILDTYPE}/libc.a
-    BYPRODUCTS ${LIBC_OBJS}
-    VERBATIM
-)

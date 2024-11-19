@@ -290,10 +290,6 @@ static int mtdblk_rread(struct mtdblk_file *file, void *buffer, size_t size, off
 
 static int mtdblk_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     struct mtdblk_file *file = ctx;
-    if (offset < 0) {
-        errno = EINVAL;
-        return -1;
-    }
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     int ret = mtdblk_rread(file, buffer, size, &offset);
     xSemaphoreGive(file->mutex);

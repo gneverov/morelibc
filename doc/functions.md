@@ -1,9 +1,6 @@
-# Morelib
-Morelib seeks to add more POSIX-like functions to newlib-based libc libraries for microcontrollers, such as newlib-nano and picolibc.
-
-In addition to picolibc or newlib-nano, morelib depends on FreeRTOS and the Raspberry Pi Pico SDK.
-
-The following functions with 🟢 status are implemented.
+# Morelibc
+## Function list
+Morelibc seeks to augment Picolibc with more functionality from the standard C/POSIX interfaces. Here is a list of which additional functions from these standards are implemented by Morelibc. Functions marked with 🟢 are implemented. Functions marked with 🔴 are not implemented. Some functions will never make sense to implement and they come with a note explaining the rationale. Other non-implemented functions may be implemented in the future.
 
 
 ## dirent.h
@@ -22,11 +19,12 @@ The following functions with 🟢 status are implemented.
 
 ## dlfcn.h
 | Function | Status | Notes |
-| dladdr | 🔴 | |
-| dlclose | 🟢 | |
-| dlerror | 🟢 | |
-| dlopen | 🟢 | |
-| dlsym | 🟢 | |
+| - | - | - |
+| `dladdr` | 🔴 | |
+| `dlclose` | 🟢 | |
+| `dlerror` | 🟢 | |
+| `dlopen` | 🟢 | |
+| `dlsym` | 🟢 | |
 
 ## fcntl.h
 | Function | Status | Notes |
@@ -113,19 +111,19 @@ The following functions with 🟢 status are implemented.
 ## termios.h
 | Function | Status | Notes |
 | - | - | - |
-| cfgetispeed | 🟢 | |
-| cfgetospeed | 🟢 | |
-| cfsetispeed | 🟢 | |
-| cfsetospeed | 🟢 | |
-| tcdrain | 🟢 | |
-| tcflow | 🟢 | |
-| tcflush | 🟢 | |
-| tcgetattr | 🟢 | |
-| tcgetsid | 🔴 | |
-| tcgetwinsize | 🔴 | |
-| tcsendbreak | 🟢 | |
-| tcsetattr | 🟢 | |
-| tcsetwinsize | 🔴 | |
+| `cfgetispeed` | 🟢 | |
+| `cfgetospeed` | 🟢 | |
+| `cfsetispeed` | 🟢 | |
+| `cfsetospeed` | 🟢 | |
+| `tcdrain` | 🟢 | |
+| `tcflow` | 🟢 | |
+| `tcflush` | 🟢 | |
+| `tcgetattr` | 🟢 | |
+| `tcgetsid` | 🔴 | |
+| `tcgetwinsize` | 🔴 | |
+| `tcsendbreak` | 🟢 | |
+| `tcsetattr` | 🟢 | |
+| `tcsetwinsize` | 🔴 | |
 
 ## time.h
 | Function | Status | Notes |
@@ -212,22 +210,10 @@ The following functions with 🟢 status are implemented.
 | `swab` | 🟢 | Implemented by Picolibc. |
 | `symlink`<br>`symlinkat` | 🔴 | No symbolic links. |
 | `sync` | 🟢 | |
-| `sysconf` | 🔴 | No conf |
+| `sysconf` | 🔴 | No conf. |
 | `tcgetpgrp`<br>`tcsetpgrp` | 🔴 | No multiple processes. |
 | `truncate` | 🟢 | |
 | `ttyname` | 🔴 | |
 | `unlink` | 🟢 | |
 | `unlinkat` | 🔴 | | 
 | `write` | 🟢 | |
-
-
-# Environment variables
-The environment variables are stored in flash memory and are persistent across resets and reflashes of the firmware. They are useful for storing small pieces of information that are needed before or without a filesystem being mounted.
-
-| Variable | Notes | Example |
-| - | - | - |
-| `COUNTRY` | Country code for wifi | US |
-| `HOSTNAME` | Host name used by `gethostname` |
-| `ROOT` | How to mount root filesystem: *device* *fstype* [*flags*] | /dev/flash fatfs |
-| `TTY` | Device to open for stdio streams| /dev/ttyUSB0 |
-| `TZ` | Time zone used by `tzset`| PST8PDT |

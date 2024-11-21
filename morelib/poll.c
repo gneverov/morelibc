@@ -30,22 +30,22 @@ struct poll_event {
 };
 
 static void poll_add_waiter(struct vfs_file *file, struct poll_event *event) {
-    struct poll_event **pevent = &file->event; // codespell:ignore pevent
+    struct poll_event **pevent = &file->event;
     taskENTER_CRITICAL();
-    event->next = *pevent; // codespell:ignore pevent
-    *pevent = event; // codespell:ignore pevent
+    event->next = *pevent;
+    *pevent = event;
     taskEXIT_CRITICAL();
 }
 
 static void poll_remove_waiter(struct vfs_file *file, struct poll_event *event) {
-    struct poll_event **pevent = &file->event; // codespell:ignore pevent
+    struct poll_event **pevent = &file->event;
     taskENTER_CRITICAL();
-    while (*pevent) { // codespell:ignore pevent
-        if (*pevent == event) { // codespell:ignore pevent
-            *pevent = event->next; // codespell:ignore pevent
+    while (*pevent) {
+        if (*pevent == event) {
+            *pevent = event->next;
             event->next = NULL;
         } else {
-            pevent = &(*pevent)->next; // codespell:ignore pevent
+            pevent = &(*pevent)->next;
         }
     }
     taskEXIT_CRITICAL();
@@ -117,27 +117,27 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout) {
 }
 
 void poll_notify(struct vfs_file *file, uint events) {
-    struct poll_event **pevent = &file->event; // codespell:ignore pevent
-    taskENTER_CRITICAL(); // codespell:ignore pevent
-    while (*pevent) { // codespell:ignore pevent
-        struct poll_event *event = *pevent; // codespell:ignore pevent
+    struct poll_event **pevent = &file->event;
+    taskENTER_CRITICAL();
+    while (*pevent) {
+        struct poll_event *event = *pevent;
         // if (event->events & events) {
         xTaskNotifyGive(event->task);
         // }
-        pevent = &event->next; // codespell:ignore pevent
+        pevent = &event->next;
     }
     taskEXIT_CRITICAL();
 }
 
 void poll_notify_from_isr(struct vfs_file *file, uint events, BaseType_t *pxHigherPriorityTaskWoken) {
-    struct poll_event **pevent = &file->event; // codespell:ignore pevent
+    struct poll_event **pevent = &file->event;
     UBaseType_t uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
-    while (*pevent) { // codespell:ignore pevent
-        struct poll_event *event = *pevent; // codespell:ignore pevent
+    while (*pevent) {
+        struct poll_event *event = *pevent;
         // if (event->events & events) {
         vTaskNotifyGiveFromISR(event->task, pxHigherPriorityTaskWoken);
         // }
-        pevent = &event->next; // codespell:ignore pevent
+        pevent = &event->next;
     }
     taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
 }

@@ -1,6 +1,13 @@
 // SPDX-FileCopyrightText: 2023 Gregory Neverov
 // SPDX-License-Identifier: MIT
 
+/**
+ * Module to support multiplexing DMA interrupts.
+ * 
+ * There are only 2 DMA IRQs, but potentially more than 2 users of DMA. This module allows users to
+ * register an IRQ handler for an individual DMA channel, thereby allowing multiple users to share 
+ * the same hardware IRQ.
+ */
 #include "hardware/irq.h"
 
 #include "freertos/interrupts.h"
@@ -29,6 +36,14 @@ void rp2_dma_init(void) {
     irq_set_enabled(DMA_IRQ_1, true);
 }
 
+/**
+ * Sets the handler for a DMA channel.
+ * 
+ * Args:
+ * channel: DMA channel
+ * handler: handler
+ * context: context argument of handler
+ */
 void rp2_dma_set_irq(uint channel, rp2_dma_handler_t handler, void *context) {
     UBaseType_t save = set_interrupt_core_affinity();
     dma_channel_set_irq1_enabled(channel, false);
@@ -38,6 +53,13 @@ void rp2_dma_set_irq(uint channel, rp2_dma_handler_t handler, void *context) {
     clear_interrupt_core_affinity(save);
 }
 
+
+/**
+ * Clears the handler for a DMA channel.
+ * 
+ * Args:
+ * channel: DMA channel
+ */
 void rp2_dma_clear_irq(uint channel) {
     UBaseType_t save = set_interrupt_core_affinity();
     dma_channel_set_irq1_enabled(channel, false);
@@ -46,6 +68,13 @@ void rp2_dma_clear_irq(uint channel) {
     clear_interrupt_core_affinity(save);
 }
 
+
+/**
+ * Acknowledges an IRQ for a DMA channel.
+ * 
+ * Args:
+ * channel: DMA channel
+ */
 void rp2_dma_acknowledge_irq(uint channel) {
     dma_channel_acknowledge_irq1(channel);
 }

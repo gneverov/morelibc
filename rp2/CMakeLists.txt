@@ -15,7 +15,6 @@ target_sources(morelib_rp2 INTERFACE
     sdcard.c
     spi.c
     term_uart.c
-    uart.c
 )
 
 target_include_directories(morelib_rp2 INTERFACE include)

@@ -14,11 +14,13 @@
 
 #include "FreeRTOS.h"
 #include "semphr.h"
+#include "freertos/interrupts.h"
 
 #include "hardware/gpio.h"
+#include "hardware/irq.h"
+#include "hardware/uart.h"
 #include "rp2/fifo.h"
 #include "rp2/term_uart.h"
-#include "rp2/uart.h"
 
 
 typedef struct {
@@ -30,14 +32,14 @@ typedef struct {
     rp2_fifo_t tx_fifo;
     ring_t rx_fifo;
     struct termios termios;
-    uint cooked_state;
     StaticSemaphore_t xMutexBuffer;
 } term_uart_t;
 
 static term_uart_t *term_uarts[NUM_UARTS];
 
-static void term_uart_handler(uart_inst_t *uart, void *ctx, BaseType_t *pxHigherPriorityTaskWoken) {
-    term_uart_t *file = ctx;
+static void term_uart_handler(uint index) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    term_uart_t *file = term_uarts[index];
     char buffer[16];
     size_t write_count = 0;
     while (uart_is_readable(file->uart) && (write_count < 16)) {
@@ -58,14 +60,25 @@ static void term_uart_handler(uart_inst_t *uart, void *ctx, BaseType_t *pxHigher
         }
         buffer[write_count++] = ch;
         if (sig) {
-            kill_from_isr(0, sig, pxHigherPriorityTaskWoken);
+            kill_from_isr(0, sig, &xHigherPriorityTaskWoken);
         }
     }
     if (write_count) {
         ring_write(&file->rx_fifo, &buffer, write_count);
-        poll_notify_from_isr(&file->base, POLLIN | POLLRDNORM, pxHigherPriorityTaskWoken);
+        poll_notify_from_isr(&file->base, POLLIN | POLLRDNORM, &xHigherPriorityTaskWoken);
     }
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+
+static void term_uart_handler0(void) {
+    term_uart_handler(0);
+}
+
+static void term_uart_handler1(void) {
+    term_uart_handler(1);
+}
+
+#define UART_IRQ_HANDLER(uart) (UART_NUM(uart) ? term_uart_handler1 : term_uart_handler0)
 
 static void term_uart_tx_handler(rp2_fifo_t *fifo, const ring_t *ring, BaseType_t *pxHigherPriorityTaskWoken) {
     term_uart_t *file = (void *)fifo - offsetof(term_uart_t, tx_fifo);
@@ -83,7 +96,11 @@ static void term_uart_tx_handler(rp2_fifo_t *fifo, const ring_t *ring, BaseType_
 
 static void term_uart_file_deinit(term_uart_t *file) {
     if (file->uart) {
-        rp2_uart_clear_irq(file->uart);
+        UBaseType_t save = set_interrupt_core_affinity();
+        irq_set_enabled(UART_IRQ_NUM(file->uart), false);
+        irq_remove_handler(UART_IRQ_NUM(file->uart), UART_IRQ_HANDLER(file->uart));
+        clear_interrupt_core_affinity(save);
+
         uart_deinit(file->uart);
         // Pull tx pin high to prevent noise for the receiver
         gpio_set_pulls(file->tx_pin, true, false);
@@ -217,8 +234,11 @@ static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, ui
     uart_init(uart, baudrate);
     gpio_set_function(rx_pin, GPIO_FUNC_UART);
     gpio_set_function(tx_pin, GPIO_FUNC_UART);
-    rp2_uart_set_irq(uart, term_uart_handler, file);
+    UBaseType_t save = set_interrupt_core_affinity();
+    irq_set_exclusive_handler(UART_IRQ_NUM(uart), UART_IRQ_HANDLER(uart));
+    irq_set_enabled(UART_IRQ_NUM(uart), true);
     uart_set_irqs_enabled(uart, true, false);
+    clear_interrupt_core_affinity(save);
     return 0;
 }
 
@@ -252,6 +272,9 @@ exit:
     return file;
 }
 
+/**
+ * Morelibc terminal driver for UARTs.
+ */
 const struct dev_driver term_uart_drv = {
     .dev = DEV_TTYS0,
     .open = term_uart_open,

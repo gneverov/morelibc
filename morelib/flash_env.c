@@ -8,18 +8,16 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <morelib/crc.h>
 
 #define FLASH_ENV_MAX 64
-#define FLASH_ENV_OFFSET 0x1000
 
 
 struct flash_env {
     const char *env[FLASH_ENV_MAX];
-    uintptr_t nenv[FLASH_ENV_MAX];
-    char buffer[3584];
+    char buffer[2048];
+    uint32_t crc;    
 };
-
-static_assert(sizeof(struct flash_env) == 4096);
 
 extern char **environ;
 
@@ -28,12 +26,9 @@ static const volatile struct flash_env flash_env;
 
 __attribute__((constructor(101), visibility("hidden")))
 void env_init(void) {
-    for (int i = 0; i < FLASH_ENV_MAX; i++) {
-        if ((uintptr_t)flash_env.env[i] != ~flash_env.nenv[i]) {
-            return;
-        }
+    if (crc32(CRC32_INITIAL, (const void *)&flash_env, sizeof(struct flash_env)) == CRC32_CHECK) {
+        environ = (char **)flash_env.env;
     }
-    environ = (char **)flash_env.env;
 }
 
 static int env_compare(void) {
@@ -63,7 +58,8 @@ int env_fini(void) {
         return -1;
     }
     int ret = -1;
-    void *addr = mmap(0, sizeof(struct flash_env), PROT_READ, MAP_SHARED, fd, FLASH_ENV_OFFSET);
+    uintptr_t off = ((uintptr_t)&flash_env) & 0xffffff;
+    void *addr = mmap(0, sizeof(struct flash_env), PROT_READ, MAP_SHARED, fd, off);
     if (addr != &flash_env) {
         goto exit;
     }
@@ -72,22 +68,29 @@ int env_fini(void) {
     char **e = environ;
     for (int i = 0; i < FLASH_ENV_MAX; i++) {
         uintptr_t ptr = *e ? pos + (uintptr_t)&flash_env : 0;
-        if (pwrite(fd, &ptr, sizeof(ptr), FLASH_ENV_OFFSET + offsetof(struct flash_env, env[i])) < 0) {
-            goto exit;
-        }
-        ptr = ~ptr;
-        if (pwrite(fd, &ptr, sizeof(ptr), FLASH_ENV_OFFSET + offsetof(struct flash_env, nenv[i])) < 0) {
+        if (pwrite(fd, &ptr, sizeof(ptr), off + offsetof(struct flash_env, env[i])) < 0) {
             goto exit;
         }
         if (*e) {
             size_t len = strlen(*e) + 1;
-            if (pwrite(fd, *e, len, FLASH_ENV_OFFSET + pos) < 0) {
+            if (pwrite(fd, *e, len, off + pos) < 0) {
                 goto exit;
             }
             pos += len;
             e++;
         }
     }
+    uint32_t crc = CRC32_INITIAL;
+    for (size_t i = 0; i < offsetof(struct flash_env, crc); i += 4) {
+        uint8_t buf[4];
+        if (pread(fd, buf, 4, off + i) < 0) {
+            goto exit;
+        }
+        crc = crc32(crc, buf, 4);
+    }
+    if (pwrite(fd, &crc, 4, off + offsetof(struct flash_env, crc)) < 0) {
+        goto exit;
+    }    
     if (fsync(fd) < 0) {
         goto exit;
     }

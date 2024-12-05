@@ -16,7 +16,7 @@ This project also contains a number of optional components for integrating popul
 - [FatFS](http://elm-chan.org/fsw/ff/): driver for FAT file system
 - [littlefs](https://github.com/littlefs-project/littlefs): driver for littlefs file system
 - [lwIP](https://savannah.nongnu.org/projects/lwip/): socket programming interface (*coming soon*)
-- [TinyUSB](https://github.com/hathach/tinyusb): drivers for CDC (serial) and MSC (storage) devices (USB device-side only) (*coming soon*)
+- [TinyUSB](https://github.com/hathach/tinyusb): drivers for CDC (serial) and MSC (storage) devices (USB device-side only)
 
 ## Building
 To build the [minimal example](/example/):

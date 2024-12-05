@@ -3,12 +3,14 @@ cmake_minimum_required(VERSION 3.13)
 add_library(morelib_core INTERFACE)
 
 target_sources(morelib_core INTERFACE
+    crc.c
     dev.c
     devfs.c
     dirent.c
     dlfcn.c
     event.c
     fcntl.c
+    flash.c
     flash_env.c
     flash_heap.c
     ioctl.c
@@ -57,6 +59,11 @@ if(DEFINED FATFS_DIR)
     target_link_libraries(morelib_fatfs INTERFACE
         morelib_core
     )
+    set_source_files_properties(
+        ${FATFS_DIR}/source/ff.c
+        ${FATFS_DIR}/source/ffunicode.c
+        PROPERTIES COMPILE_OPTIONS -fvisibility=hidden
+    )
 endif()
 
 if(DEFINED LITTLEFS_DIR)
@@ -73,6 +80,11 @@ if(DEFINED LITTLEFS_DIR)
     target_link_libraries(morelib_littlefs INTERFACE
         morelib_core
     )
+    set_source_files_properties(
+        ${LITTLEFS_DIR}/lfs.c
+        ${LITTLEFS_DIR}/lfs_util.c    
+        PROPERTIES COMPILE_OPTIONS -fvisibility=hidden
+    )    
 endif()
 
 

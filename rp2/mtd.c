@@ -1,6 +1,22 @@
 // SPDX-FileCopyrightText: 2024 Gregory Neverov
 // SPDX-License-Identifier: MIT
 
+/**
+ * Morelibc MTD driver for XIP memory.
+ * 
+ * During initialization the driver scans for XIP memory: flash and possibly PSRAM. By default, the
+ * driver will partition the flash memory into 2 partitions: one for the firmware, and another for
+ * a possible filesystem. PSRAM is not partitioned. The N flash partitions appear as devices mtd0, 
+ * mtd1, ..., mtdN. The PSRAM partition appears as device mtdN+1.
+ * 
+ * Environment variables can be set to control driver initialization.
+ * MTDPART: A comma-separated list of partition sizes in bytes for flash memory. E.g.,
+ *   "MTDPART=1048576,524288,524288" creates 3 partitions of sizes 1MB, 512kB, 512kB. Overrides the 
+ *   default partitioning scheme.
+ * FLASH_SIZE: The size of flash memory in bytes. Overrides the auto-detected size.
+ * PSRAM_CS: The GPIO number of the chip select line for PSRAM. Overrides scanning all possible lines.
+ */
+
 #include <errno.h>
 #include <fcntl.h>
 #include <malloc.h>
@@ -278,6 +294,9 @@ exit:
     return file;
 }
 
+/**
+ * Morelibc MTD driver for XIP memory (including PSRAM).
+ */
 const struct dev_driver mtd_drv = {
     .dev = DEV_MTD0,
     .open = mtd_open,

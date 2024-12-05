@@ -56,7 +56,7 @@ SECTIONS
     } > FLASH
 
     .flash_env 0x10001000 (NOLOAD) : { 
-        *(.flash_env*)
+        *(SORT_BY_NAME(.flash_env*))
     } > FLASH =0xff
 
     .text : ALIGN(4k) {

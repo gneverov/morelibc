@@ -149,7 +149,7 @@ static off_t sdcard_lseek(void *ctx, off_t offset, int whence) {
     return file->ptr = offset;
 }
 
-static int sdcard_read(void *ctx, void *buf, size_t size) {
+static int sdcard_read(void *ctx, void *buf, size_t size, int flags) {
     struct sdcard_file *file = ctx;
     size_t count = 0;
     if (!sdcard_wait(file, pdMS_TO_TICKS(100))) {
@@ -188,7 +188,7 @@ static const struct vfs_file_vtable sdcard_vtable = {
     // .write = sdcard_write,
 };
 
-static void *sdcard_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
+static void *sdcard_open(const void *ctx, dev_t dev, mode_t mode) {
     uint spi_num = minor(dev) >> 7;
     uint cs_pin = minor(dev) & 0x7f;
     if ((spi_num >= NUM_SPIS) || (cs_pin >= NUM_BANK0_GPIOS)) {

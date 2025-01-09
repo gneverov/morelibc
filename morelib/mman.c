@@ -6,6 +6,18 @@
 #include <sys/mman.h>
 #include "morelib/vfs.h"
 
+void *vfs_mmap(void *addr, size_t len, int prot, int flags, struct vfs_file *file, off_t off) {
+    if (!len || (off < 0)) {
+        errno = EINVAL;
+        return NULL;
+    }    
+    if (file->func->mmap) {
+        return file->func->mmap(file, addr, len, prot, flags, off);
+    } else {
+        errno = ENODEV;
+        return NULL;
+    }
+}
 
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off) {
     int fd_flags = 0;
@@ -21,16 +33,7 @@ void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off) {
         errno = EACCES;
         return NULL;
     }
-    if (!len || (off < 0)) {
-        errno = EINVAL;
-        return NULL;
-    }
-    void *ret = NULL;
-    if (file->func->mmap) {
-        ret = file->func->mmap(file, addr, len, prot, flags, off);
-    } else {
-        errno = ENODEV;
-    }
+    void *ret = vfs_mmap(addr, len, prot, flags, file, off);
     vfs_release_file(file);
     return ret;
 }

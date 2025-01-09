@@ -24,6 +24,11 @@ static char *vfs_cwd;
 
 static struct vfs_file *vfs_tty;
 
+static inline char *strchrnul(const char *str, char ch) {
+    char *ret = strchr(str, ch);
+    return ret ? ret : (char *)str + strlen(str);
+}
+
 __attribute__((constructor, visibility("hidden")))
 void vfs_init(void) {
     static StaticSemaphore_t xMutexBuffer;
@@ -339,7 +344,6 @@ void vfs_file_init(struct vfs_file *file, const struct vfs_file_vtable *func, mo
     file->func = func;
     file->ref_count = 1;
     file->mode = mode;
-    file->event = NULL;
 }
 
 struct vfs_file *vfs_acquire_file(int fd, int *flags) {
@@ -361,7 +365,7 @@ struct vfs_file *vfs_acquire_file(int fd, int *flags) {
     return file;
 }
 
-struct vfs_file *vfs_copy_file(struct vfs_file *file) {
+void *vfs_copy_file(struct vfs_file *file) {
     vfs_lock();
     file->ref_count++;
     vfs_unlock();
@@ -373,7 +377,6 @@ void vfs_release_file(struct vfs_file *file) {
     int ref_count = --file->ref_count;
     vfs_unlock();
     if (ref_count == 0) {
-        assert(file->event == NULL);
         if (file->func->close) {
             file->func->close(file);
         } else {
@@ -410,7 +413,7 @@ static int vfs_fd_next(void) {
     return -1;
 }
 
-int vfs_close(int fd) {
+int close(int fd) {
     if ((uint)fd >= VFS_FD_MAX) {
         errno = EBADF;
         return -1;
@@ -463,7 +466,7 @@ __attribute__((destructor(200)))
 void vfs_deinit(void) {
     for (int fd = VFS_FD_MAX - 1; fd >= 0; fd--) {
         fsync(fd);
-        vfs_close(fd);
+        close(fd);
     }
     sync();
 }

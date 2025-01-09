@@ -239,7 +239,7 @@ static int mtd_pwrite(void *ctx, const void *buffer, size_t size, off_t offset) 
     return result;
 }
 
-static int mtd_read(void *ctx, void *buffer, size_t size) {
+static int mtd_read(void *ctx, void *buffer, size_t size, int flags) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     int ret = mtd_pread(file, buffer, size, file->pos);
@@ -247,7 +247,7 @@ static int mtd_read(void *ctx, void *buffer, size_t size) {
     return ret;
 }
 
-static int mtd_write(void *ctx, const void *buffer, size_t size) {
+static int mtd_write(void *ctx, const void *buffer, size_t size, int flags) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     int ret = mtd_pwrite(file, buffer, size, file->pos);
@@ -267,7 +267,7 @@ static const struct vfs_file_vtable mtd_vtable = {
     .write = mtd_write,
 };
 
-static void *mtd_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
+static void *mtd_open(const void *ctx, dev_t dev, mode_t mode) {
     int index = minor(dev);
     if ((index >= MTD_NUM_PARTITIONS) || !mtd_partitions[index].device) {
         errno = ENODEV;

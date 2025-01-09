@@ -27,7 +27,7 @@ struct mtdblk_cache_entry {
 struct mtdblk_file {
     struct vfs_file base;
     int index;
-    int fd;
+    struct vfs_file *file;
     size_t size;
     size_t block_size;
     SemaphoreHandle_t mutex;

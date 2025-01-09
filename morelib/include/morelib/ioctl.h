@@ -3,8 +3,12 @@
 
 #pragma once
 
-#include <stdarg.h>
 #include <sys/ioctl.h>
 
 
-int vioctl(int fd, unsigned long request, va_list args);
+// Terminal multiplexer device ioctls
+// ---
+#define TMUX_BASE 0x8100
+
+#define TMUX_ADD (TMUX_BASE + 0)
+#define TMUX_REMOVE (TMUX_BASE + 1)

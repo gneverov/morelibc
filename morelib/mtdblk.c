@@ -17,15 +17,11 @@
 
 static struct mtdblk_file *mtdblk_files[MTDBLK_NUM_DEVICES];
 
-__attribute__((constructor, visibility("hidden")))
-void mtdblk_init(void) {
-}
-
 static void mtdblk_file_deinit(struct mtdblk_file *file) {
-    if (file->fd >= 0) {
-        close(file->fd);
+    if (file->file) {
+        vfs_release_file(file->file);
     }
-    file->fd = -1;
+    file->file = NULL;
     for (size_t i = 0; i < MTDBLK_NUM_CACHE_ENTRIES; i++) {
         free(file->cache[i].page);
         file->cache[i].page = NULL;
@@ -41,10 +37,10 @@ static void *mtdblk_put_page(struct mtdblk_file *file, size_t cache_index) {
         entry->num * file->block_size,
         file->block_size,
     };
-    if (ioctl(file->fd, MEMERASE, &erase_info) < 0) {
+    if (vfs_ioctl(file->file, MEMERASE, &erase_info) < 0) {
         return NULL;
     }
-    if (pwrite(file->fd, entry->page, file->block_size, entry->num * file->block_size) < 0) {
+    if (vfs_pwrite(file->file, entry->page, file->block_size, entry->num * file->block_size) < 0) {
         return NULL;
     }
     return entry->page;
@@ -90,7 +86,7 @@ static void *mtdblk_get_page(struct mtdblk_file *file, size_t pos) {
         mtdblk_put_page(file, index);
     }
     if (page_num != entry->num) {
-        if (pread(file->fd, entry->page, file->block_size, page_num * file->block_size) < 0) {
+        if (vfs_pread(file->file, entry->page, file->block_size, page_num * file->block_size) < 0) {
             free(entry->page);
             entry->page = NULL;
             return NULL;
@@ -126,7 +122,7 @@ static int mtdblk_flush(struct mtdblk_file *file) {
             }
         }
     }
-    return fsync(file->fd) < 0 ? -1 : ret;
+    return vfs_fsync(file->file) < 0 ? -1 : ret;
 }
 
 static int mtdblk_close(void *ctx) {
@@ -221,7 +217,7 @@ static int mtdblk_ioctl(void *ctx, unsigned long request, va_list args) {
         }
 
         default: {
-            ret = vioctl(file->fd, request, args);
+            ret = vfs_vioctl(file->file, request, args);
             break;
         }
     }
@@ -262,7 +258,7 @@ exit:
 
 static void *mtdblk_mmap(void *ctx, void *addr, size_t len, int prot, int flags, off_t off) {
     struct mtdblk_file *file = ctx;
-    return mmap(addr, len, prot, flags, file->fd, off);
+    return vfs_mmap(addr, len, prot, flags, file->file, off);
 }
 
 static int mtdblk_rread(struct mtdblk_file *file, void *buffer, size_t size, off_t *offset) {
@@ -275,7 +271,7 @@ static int mtdblk_rread(struct mtdblk_file *file, void *buffer, size_t size, off
         if (page) {
             memcpy(buffer, page, len);
         } else {
-            int ret = pread(file->fd, buffer, len, *offset);
+            int ret = vfs_pread(file->file, buffer, len, *offset);
             if (ret < 0) {
                 return -1;
             }
@@ -296,7 +292,7 @@ static int mtdblk_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     return ret;
 }
 
-static int mtdblk_read(void *ctx, void *buffer, size_t size) {
+static int mtdblk_read(void *ctx, void *buffer, size_t size, int flags) {
     struct mtdblk_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     off_t offset = file->pos;
@@ -335,7 +331,7 @@ static int mtdblk_rwrite(struct mtdblk_file *file, const void *buffer, size_t si
         if (page) {
             memcpy(page, buffer, len);
         } else {
-            int ret = pwrite(file->fd, buffer, len, *offset);
+            int ret = vfs_pwrite(file->file, buffer, len, *offset);
             if (ret < 0) {
                 return -1;
             }
@@ -360,7 +356,7 @@ static int mtdblk_pwrite(void *ctx, const void *buffer, size_t size, off_t offse
     return ret;
 }
 
-static int mtdblk_write(void *ctx, const void *buffer, size_t size) {
+static int mtdblk_write(void *ctx, const void *buffer, size_t size, int flags) {
     struct mtdblk_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     off_t offset = file->pos;
@@ -383,19 +379,19 @@ static const struct vfs_file_vtable mtdblk_vtable = {
     .write = mtdblk_write,
 };
 
-static int mtdblk_file_init(struct mtdblk_file *file, int index, int flags, mode_t mode, dev_t device) {
+static int mtdblk_file_init(struct mtdblk_file *file, int index, mode_t mode, dev_t device) {
     vfs_file_init(&file->base, &mtdblk_vtable, mode | S_IFBLK);
     file->index = index;
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
 
     dev_t mtd_device = makedev(major(DEV_MTD0), minor(device));
-    file->fd = opendev(mtd_device, flags, mode);
-    if (file->fd < 0) {
+    file->file = opendev(mtd_device, mode);
+    if (!file->file) {
         return -1;
     }
 
     struct mtd_info mtd_info;
-    if (ioctl(file->fd, MEMGETINFO, &mtd_info) < 0) {
+    if (vfs_ioctl(file->file, MEMGETINFO, &mtd_info) < 0) {
         return -1;
     }
     file->size = mtd_info.size;
@@ -403,7 +399,7 @@ static int mtdblk_file_init(struct mtdblk_file *file, int index, int flags, mode
     return 0;
 }
 
-static void *mtdblk_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
+static void *mtdblk_open(const void *ctx, dev_t dev, mode_t mode) {
     uint index = minor(dev);
     if (index >= MTDBLK_NUM_DEVICES) {
         errno = ENODEV;
@@ -419,7 +415,7 @@ static void *mtdblk_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
     if (!file) {
         goto exit;
     }
-    if (mtdblk_file_init(file, index, flags, mode, dev) < 0) {
+    if (mtdblk_file_init(file, index, mode, dev) < 0) {
         mtdblk_file_deinit(file);
         free(file);
         file = NULL;

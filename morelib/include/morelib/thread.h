@@ -37,13 +37,13 @@ thread_t *thread_createStatic(TaskFunction_t pxTaskCode, const char *pcName, con
 
 
 // Thread interruption
-int thread_enable_interrupt();
+int thread_enable_interrupt(void);
 
-void thread_disable_interrupt();
+void thread_disable_interrupt(void);
 
 void thread_interrupt(thread_t *thread);
 
-// int thread_check_interrupted();
+int thread_check_interrupted(void);
 
 
 // Thread join

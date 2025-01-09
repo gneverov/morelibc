@@ -10,7 +10,6 @@
 #include "morelib/dev.h"
 #include "morelib/poll.h"
 #include "morelib/termios.h"
-#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
@@ -20,7 +19,7 @@
 
 
 typedef struct {
-    struct vfs_file base;
+    struct poll_file base;
     uint8_t usb_itf;
     SemaphoreHandle_t mutex;
     struct termios termios;
@@ -52,10 +51,10 @@ static void term_usb_tud_cdc_device_cb(void *context, tud_cdc_cb_type_t cb_type,
             break;
         }
         case TUD_CDC_TX_COMPLETE: {
-            if (tud_cdc_n_write_available(file->usb_itf) >= 16) {
+            if (tud_cdc_n_write_available(file->usb_itf) >= (CFG_TUD_CDC_TX_BUFSIZE / 4)) {
                 events |= POLLOUT | POLLWRNORM;
             }
-            if (!tud_cdc_n_write_available(file->usb_itf)) {
+            if (tud_cdc_n_write_available(file->usb_itf) == CFG_TUD_CDC_TX_BUFSIZE) {
                 events |= POLLDRAIN;
             }
             break;
@@ -63,7 +62,7 @@ static void term_usb_tud_cdc_device_cb(void *context, tud_cdc_cb_type_t cb_type,
         case TUD_CDC_LINE_STATE: {
             if (!tud_cdc_n_connected(file->usb_itf)) {
                 tud_cdc_n_write_clear(file->usb_itf);
-                events |= (file->termios.c_cflag & CLOCAL) ? 0 : POLLHUP;
+                events |= POLLOUT | POLLWRNORM | POLLDRAIN;
             }
             break;
         }
@@ -71,15 +70,12 @@ static void term_usb_tud_cdc_device_cb(void *context, tud_cdc_cb_type_t cb_type,
             term_usb_update_line_coding(file, cb_args->line_coding.p_line_coding);
             break;
         }
-        case TUD_CDC_SEND_BREAK: {
-            events |= POLLPRI;
+        default: {
             break;
         }
     }
+    poll_file_notify(&file->base, 0, events);
     xSemaphoreGive(file->mutex);
-    if (events) {
-        poll_notify(&file->base, events);
-    }
 }
 
 static int term_usb_close(void *ctx) {
@@ -103,11 +99,14 @@ static int term_usb_fstat(void *ctx, struct stat *pstat) {
 static int term_usb_ioctl(void *ctx, unsigned long request, va_list args) {
     term_usb_t *file = ctx;
     int ret = -1;
+    xSemaphoreTake(file->mutex, portMAX_DELAY);
     switch (request) {
         case TCFLSH: {
             tud_cdc_n_write_clear(file->usb_itf);
             tud_cdc_n_read_flush(file->usb_itf);
+            poll_file_notify(&file->base, POLLIN | POLLRDNORM, POLLOUT | POLLWRNORM | POLLDRAIN);
             ret = 0;
+            break;
         }
         case TCGETS: {
             struct termios *p = va_arg(args, struct termios *);
@@ -126,62 +125,50 @@ static int term_usb_ioctl(void *ctx, unsigned long request, va_list args) {
             break;
         }
     }
+    xSemaphoreGive(file->mutex);
     return ret;
 }
 
-static uint term_usb_poll(void *ctx) {
+static int term_usb_read(void *ctx, void *buffer, size_t size, int flags) {
     term_usb_t *file = ctx;
-    uint events = 0;
-    xSemaphoreTake(file->mutex, portMAX_DELAY);
-    if (!tud_cdc_n_connected(file->usb_itf) && !(file->termios.c_cflag & CLOCAL)) {
-        events |= POLLHUP;
-    }
-    if (tud_cdc_n_available(file->usb_itf)) {
-        events |= POLLIN | POLLRDNORM;
-    }
-    if (tud_cdc_n_write_available(file->usb_itf) >= 16) {
-        events |= POLLOUT | POLLWRNORM;
-    }
-    if (!tud_cdc_n_write_available(file->usb_itf)) {
-        events |= POLLDRAIN;
-    }
-    xSemaphoreGive(file->mutex);
-    return events;
-}
-
-static int term_usb_read(void *ctx, void *buffer, size_t size) {
-    term_usb_t *file = ctx;
-    int ret = -1;
-    xSemaphoreTake(file->mutex, portMAX_DELAY);
-    if (!tud_cdc_n_connected(file->usb_itf)) {
-        errno = (file->termios.c_cflag & CLOCAL) ? EAGAIN : EIO;
-    } else if (!tud_cdc_n_available(file->usb_itf)) {
-        errno = EAGAIN;
-    } else {
+    TickType_t xTicksToWait = portMAX_DELAY;
+    int ret;
+    do {
+        xSemaphoreTake(file->mutex, portMAX_DELAY);
         ret = tud_cdc_n_read(file->usb_itf, buffer, size);
+        if (!ret && size) {
+            errno = EAGAIN;
+            ret = -1;
+            poll_file_notify(&file->base, POLLIN | POLLRDNORM, 0);
+        }
+        xSemaphoreGive(file->mutex);
     }
-    xSemaphoreGive(file->mutex);
+    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
-static int term_usb_write(void *ctx, const void *buffer, size_t size) {
+static int term_usb_write(void *ctx, const void *buffer, size_t size, int flags) {
     term_usb_t *file = ctx;
-    int ret = -1;
-    xSemaphoreTake(file->mutex, portMAX_DELAY);
-    if (!tud_cdc_n_connected(file->usb_itf)) {
-        if (file->termios.c_cflag & CLOCAL) {
+    TickType_t xTicksToWait = portMAX_DELAY;
+    int ret;
+    do {
+        xSemaphoreTake(file->mutex, portMAX_DELAY);
+        if (!tud_cdc_n_connected(file->usb_itf)) {
             ret = size;
         } else {
-            errno = EIO;
+            ret = tud_cdc_n_write(file->usb_itf, buffer, size);
+            if (!ret && size) {
+                errno = EAGAIN;
+                ret = -1;
+                poll_file_notify(&file->base, POLLOUT | POLLWRNORM, 0);
+            }
+            else {
+                tud_cdc_n_write_flush(file->usb_itf);
+            }
         }
-    } else if (!tud_cdc_n_write_available(file->usb_itf)) {
-        errno = EAGAIN;
-        return -1;
-    } else {
-        ret = tud_cdc_n_write(file->usb_itf, buffer, size);
-        tud_cdc_n_write_flush(file->usb_itf);
+        xSemaphoreGive(file->mutex);
     }
-    xSemaphoreGive(file->mutex);
+    while (POLL_CHECK(flags, ret, &file->base, POLLOUT, &xTicksToWait));    
     return ret;
 }
 
@@ -190,12 +177,12 @@ static const struct vfs_file_vtable term_usb_vtable = {
     .fstat = term_usb_fstat,
     .ioctl = term_usb_ioctl,
     .isatty = 1,
-    .poll = term_usb_poll,
+    .pollable = 1,
     .read = term_usb_read,
     .write = term_usb_write,
 };
 
-static void *term_usb_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
+static void *term_usb_open(const void *ctx, dev_t dev, mode_t mode) {
     uint usb_itf = minor(dev);
     if (usb_itf >= CFG_TUD_CDC) {
         errno = ENODEV;
@@ -205,14 +192,14 @@ static void *term_usb_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
     dev_lock();
     term_usb_t *file = terminal_usbs[usb_itf];
     if (file) {
-        vfs_copy_file(&file->base);
+        poll_file_copy(&file->base);
         goto exit;
     }
     file = calloc(1, sizeof(term_usb_t));
     if (!file) {
         goto exit;
     }
-    vfs_file_init(&file->base, &term_usb_vtable, mode | S_IFCHR);
+    poll_file_init(&file->base, &term_usb_vtable, mode | S_IFCHR, 0);
     file->usb_itf = usb_itf;
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
     termios_init(&file->termios, 0);

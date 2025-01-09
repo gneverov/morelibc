@@ -53,19 +53,19 @@ size_t ring_read(ring_t *ring, void *buffer, size_t buffer_size) {
     return read_count;
 }
 
-size_t ring_chr(ring_t *ring, int ch) {
-    size_t read_index = ring->read_index;
-    size_t max_index = ring->write_index;
-    while (read_index < max_index) {
+ssize_t ring_chr(ring_t *ring, int ch, size_t buffer_size) {
+    size_t max_size = MIN(buffer_size, ring->write_index - ring->read_index);
+    size_t count = 0;
+    while (count < max_size) {
         size_t size;
-        const void *read_ptr = ring_at(ring, read_index, &size);
-        size = MIN(size, max_index - read_index);
+        const void *read_ptr = ring_at(ring, ring->read_index + count, &size);
+        size = MIN(size, max_size - count);
         const void *ch_ptr = memchr(read_ptr, ch, size);
         if (ch_ptr) {
-            read_index += ch_ptr - read_ptr;
-            break;
+            count += ch_ptr - read_ptr;
+            return count;
         }
-        read_index += size;
+        count += size;
     }
-    return read_index;
+    return -1;
 }

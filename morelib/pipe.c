@@ -4,16 +4,16 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <malloc.h>
+#include <unistd.h>
 #include "morelib/poll.h"
 #include "morelib/ring.h"
-#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
 
 
 struct pipe_file {
-    struct vfs_file base;
+    struct poll_file base;
     struct pipe *pipe;
     int closed;
 };
@@ -49,69 +49,70 @@ static int pipe_close(void *ctx) {
     return 0;
 }
 
-static int pipe_fstat(void *ctx, struct stat *pstat) {
-    // struct pipe_file *file = ctx;
-    // struct pipe *pipe = file->pipe;
-    return 0;
-}
 
-static uint pipe_poll(void *ctx) {
+static int pipe_read(void *ctx, void *buffer, size_t size, int flags) {
     struct pipe_file *file = ctx;
     struct pipe *pipe = file->pipe;
     ring_t *ring = &pipe->ring;
-    uint events = 0;
-    pipe_lock(pipe);
-    if (ring->write_index > ring->read_index) {
-        events |= POLLIN | POLLRDNORM;
-    }
-    if (ring->write_index < ring->read_index + ring->size) {
-        events |= POLLOUT | POLLWRNORM;
-    }
-    pipe_unlock(pipe);
-    return events;
-}
-
-static int pipe_read(void *ctx, void *buffer, size_t size) {
-    struct pipe_file *file = ctx;
-    struct pipe *pipe = file->pipe;
-    ring_t *ring = &pipe->ring;
-    pipe_lock(pipe);
     assert(!pipe->files[0].closed);
-    size_t read_count = ring_read(ring, buffer, size);
-    int writer_closed = pipe->files[1].closed;
-    pipe_unlock(pipe);
-    if (read_count) {
-        poll_notify(&pipe->files[1].base, POLLOUT | POLLWRNORM);
-    } else if (!writer_closed) {
-        errno = EAGAIN;
-        return -1;
+
+    TickType_t xTicksToWait = portMAX_DELAY;
+    int ret;
+    do {
+        pipe_lock(pipe);
+        ret = ring_read(ring, buffer, size);
+        if (!ret && size && !pipe->files[1].closed) {
+            errno = EAGAIN;
+            ret = -1;
+        }
+        if (ring_write_count(ring) >= (ring->size / 4)) {
+            poll_file_notify(&pipe->files[1].base, 0, POLLOUT | POLLWRNORM);
+        }
+        if (!ring_read_count(ring)) {
+            poll_file_notify(&pipe->files[0].base, POLLIN | POLLRDNORM, 0);
+        }
+        pipe_unlock(pipe);
     }
-    return read_count;
+    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));
+    return ret;
 }
 
-static int pipe_write(void *ctx, const void *buffer, size_t size) {
+static int pipe_write(void *ctx, const void *buffer, size_t size, int flags) {
     struct pipe_file *file = ctx;
     struct pipe *pipe = file->pipe;
     ring_t *ring = &pipe->ring;
-    pipe_lock(pipe);
     assert(!pipe->files[1].closed);
-    size_t write_count = ring_write(ring, buffer, size);
-    int reader_closed = pipe->files[0].closed;
-    pipe_unlock(pipe);
-    if (reader_closed) {
-        errno = EPIPE;
-        return -1;
+
+    TickType_t xTicksToWait = portMAX_DELAY;
+    int ret;
+    do {
+        pipe_lock(pipe);
+        if (pipe->files[0].closed) {
+            errno = EPIPE;
+            ret = -1;
+        }
+        else {
+            ret = ring_write(ring, buffer, size);
+            if (ret) {
+                poll_file_notify(&pipe->files[0].base, 0, POLLIN | POLLRDNORM);
+            }
+            else if (size) {
+                errno = EAGAIN;
+                ret = -1;
+            }
+            if (!ring_write_count(ring)) {
+                poll_file_notify(&pipe->files[1].base, POLLOUT | POLLWRNORM, 0);
+            }
+        } 
+        pipe_unlock(pipe);
     }
-    if (write_count) {
-        poll_notify(&pipe->files[0].base, POLLIN | POLLRDNORM);
-    }
-    return write_count;
+    while (POLL_CHECK(flags, ret, &file->base, POLLOUT, &xTicksToWait));
+    return ret;
 }
 
 static const struct vfs_file_vtable pipe_vtable = {
     .close = pipe_close,
-    .fstat = pipe_fstat,
-    .poll = pipe_poll,
+    .pollable = 1,
     .read = pipe_read,
     .write = pipe_write,
 };
@@ -129,7 +130,7 @@ static struct pipe *pipe_open(mode_t mode) {
     pipe->ref_count = 0;
     for (int i = 0; i < 2; i++) {
         struct pipe_file *file = &pipe->files[i];
-        vfs_file_init(&file->base, &pipe_vtable, (mode & ~S_IFMT) | S_IFIFO);
+        poll_file_init(&file->base, &pipe_vtable, (mode & ~S_IFMT) | S_IFIFO, 0);
         file->pipe = pipe;
         file->closed = 0;
         pipe->ref_count++;
@@ -143,13 +144,13 @@ int pipe(int fildes[2]) {
         return -1;
     }
     for (int i = 0; i < 2; i++) {
-        fildes[i] = vfs_replace(-1, &pipe->files[i].base, FREAD + i);
-        vfs_release_file(&pipe->files[i].base);
+        fildes[i] = poll_file_fd(&pipe->files[i].base, FREAD + i);
+        poll_file_release(&pipe->files[i].base);
     }
     int ret = 0;
     if ((fildes[0] < 0) || (fildes[1] < 0)) {
-        vfs_close(fildes[0]);
-        vfs_close(fildes[1]);
+        close(fildes[0]);
+        close(fildes[1]);
         ret = -1;
     }
     return ret;

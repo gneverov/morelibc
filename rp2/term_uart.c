@@ -10,7 +10,6 @@
 #include "morelib/poll.h"
 #include "morelib/signal.h"
 #include "morelib/termios.h"
-#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "semphr.h"
@@ -24,7 +23,7 @@
 
 
 typedef struct {
-    struct vfs_file base;
+    struct poll_file base;
     uart_inst_t *uart;
     uint tx_pin;
     uint rx_pin;
@@ -58,14 +57,18 @@ static void term_uart_handler(uint index) {
                     break;
             }
         }
-        buffer[write_count++] = ch;
         if (sig) {
             kill_from_isr(0, sig, &xHigherPriorityTaskWoken);
         }
+        else {
+            buffer[write_count++] = ch;
+        }
     }
     if (write_count) {
+        UBaseType_t uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
         ring_write(&file->rx_fifo, &buffer, write_count);
-        poll_notify_from_isr(&file->base, POLLIN | POLLRDNORM, &xHigherPriorityTaskWoken);
+        poll_file_notify_from_isr(&file->base, 0, POLLIN | POLLRDNORM, &xHigherPriorityTaskWoken);
+        taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
     }
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
@@ -90,11 +93,12 @@ static void term_uart_tx_handler(rp2_fifo_t *fifo, const ring_t *ring, BaseType_
         events |= POLLDRAIN;
     }
     if (events) {
-        poll_notify_from_isr(&file->base, events, pxHigherPriorityTaskWoken);
+        poll_file_notify_from_isr(&file->base, 0, events, pxHigherPriorityTaskWoken);
     }
 }
 
 static void term_uart_file_deinit(term_uart_t *file) {
+    rp2_fifo_deinit(&file->tx_fifo);
     if (file->uart) {
         UBaseType_t save = set_interrupt_core_affinity();
         irq_set_enabled(UART_IRQ_NUM(file->uart), false);
@@ -108,7 +112,6 @@ static void term_uart_file_deinit(term_uart_t *file) {
         gpio_deinit(file->rx_pin);
         file->uart = NULL;
     }
-    rp2_fifo_deinit(&file->tx_fifo);
     ring_free(&file->rx_fifo);
     vSemaphoreDelete(file->mutex);
 }
@@ -138,8 +141,12 @@ static int term_uart_ioctl(void *ctx, unsigned long request, va_list args) {
     switch (request) {
         case TCFLSH: {
             rp2_fifo_clear(&file->tx_fifo);
-            file->rx_fifo.read_index = file->rx_fifo.write_index;
+            taskENTER_CRITICAL();
+            ring_clear(&file->rx_fifo);
+            poll_file_notify(&file->base, POLLIN | POLLRDNORM, POLLOUT | POLLWRNORM | POLLDRAIN);
+            taskEXIT_CRITICAL();
             ret = 0;
+            break;
         }
         case TCGETS: {
             struct termios *p = va_arg(args, struct termios *);
@@ -162,45 +169,42 @@ static int term_uart_ioctl(void *ctx, unsigned long request, va_list args) {
     return ret;
 }
 
-static uint term_uart_poll(void *ctx) {
+static int term_uart_read(void *ctx, void *buffer, size_t size, int flags) {
     term_uart_t *file = ctx;
-    uint events = 0;
-    if (ring_read_count(&file->rx_fifo)) {
-        events |= POLLIN | POLLRDNORM;
+    TickType_t xTicksToWait = portMAX_DELAY;
+    int ret;
+    do {
+        taskENTER_CRITICAL();
+        ret = ring_read(&file->rx_fifo, buffer, size);
+        if (ring_read_count(&file->rx_fifo) == 0) {
+            poll_file_notify(&file->base, POLLIN | POLLRDNORM, 0);
+        }
+        taskEXIT_CRITICAL();
+        if (!ret && size) {
+            errno = EAGAIN;
+            ret = -1;
+        }
     }
-    ring_t ring;
-    rp2_fifo_exchange(&file->tx_fifo, &ring, 0);
-    if (ring_write_count(&ring) >= (ring.size / 4)) {
-        events |= POLLOUT | POLLWRNORM;
-    }
-    ;
-    if (ring_read_count(&ring)) {
-        events |= POLLDRAIN;
-    }
-    return events;
-}
-
-static int term_uart_read(void *ctx, void *buffer, size_t size) {
-    term_uart_t *file = ctx;
-    xSemaphoreTake(file->mutex, portMAX_DELAY);
-    int ret = ring_read(&file->rx_fifo, buffer, size);
-    xSemaphoreGive(file->mutex);
-    if (!ret) {
-        errno = EAGAIN;
-        return -1;
-    }
+    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
-static int term_uart_write(void *ctx, const void *buffer, size_t size) {
+static int term_uart_write(void *ctx, const void *buffer, size_t size, int flags) {
     term_uart_t *file = ctx;
-    xSemaphoreTake(file->mutex, portMAX_DELAY);
-    int ret = rp2_fifo_transfer(&file->tx_fifo, (void *)buffer, size);
-    if (!ret) {
-        errno = EAGAIN;
-        ret = -1;
+    TickType_t xTicksToWait = portMAX_DELAY;
+    int ret;
+    do {    
+        poll_file_notify(&file->base, POLLOUT | POLLWRNORM, 0);
+        ret = rp2_fifo_transfer(&file->tx_fifo, (void *)buffer, size);
+        if (ret >= size) {
+            poll_file_notify(&file->base, 0, POLLOUT | POLLWRNORM);
+        }      
+        if (!ret && size) {
+            errno = EAGAIN;
+            ret = -1;
+        }
     }
-    xSemaphoreGive(file->mutex);
+    while (POLL_CHECK(flags, ret, &file->base, POLLOUT, &xTicksToWait));
     return ret;
 }
 
@@ -209,13 +213,13 @@ static const struct vfs_file_vtable term_uart_vtable = {
     .fstat = term_uart_fstat,
     .ioctl = term_uart_ioctl,
     .isatty = 1,
-    .poll = term_uart_poll,
+    .pollable = 1,
     .read = term_uart_read,
     .write = term_uart_write,
 };
 
-static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, uint rx_pin, uint baudrate, int flags, mode_t mode) {
-    vfs_file_init(&file->base, &term_uart_vtable, mode | S_IFCHR);
+static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, uint rx_pin, uint baudrate, mode_t mode) {
+    poll_file_init(&file->base, &term_uart_vtable, mode | S_IFCHR, 0);
     uart_inst_t *uart = UART_INSTANCE(uart_num);
     file->tx_pin = tx_pin;
     file->rx_pin = rx_pin;
@@ -242,7 +246,7 @@ static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, ui
     return 0;
 }
 
-void *term_uart_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
+void *term_uart_open(const void *ctx, dev_t dev, mode_t mode) {
     uint uart_num = minor(dev - DEV_TTYS0);
     if (uart_num >= NUM_UARTS) {
         errno = ENODEV;
@@ -255,14 +259,14 @@ void *term_uart_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
     dev_lock();
     term_uart_t *file = term_uarts[uart_num];
     if (file) {
-        vfs_copy_file(&file->base);
+        poll_file_copy(&file->base);
         goto exit;
     }
     file = calloc(1, sizeof(term_uart_t));
     if (!file) {
         goto exit;
     }
-    if (term_uart_file_init(file, uart_num, tx_pin, rx_pin, baudrate, flags, mode) < 0) {
+    if (term_uart_file_init(file, uart_num, tx_pin, rx_pin, baudrate, mode) < 0) {
         term_uart_file_deinit(file);
         free(file);
     }

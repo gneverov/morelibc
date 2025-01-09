@@ -15,7 +15,7 @@
 #include "pico/unique_id.h"
 #include "cyw43.h"
 
-#include "pico/gpio.h"
+#include "rp2/gpio.h"
 
 #ifndef CYW43_GPIO_IRQ_HANDLER_PRIORITY
 #define CYW43_GPIO_IRQ_HANDLER_PRIORITY 0x40

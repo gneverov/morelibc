@@ -4,6 +4,10 @@
 #pragma once
 
 
+typedef void (*tusb_cb_func_t)(void *arg);
+
+void tud_callback(tusb_cb_func_t func, void *arg);
+
 void tud_lock(void);
 
 void tud_unlock(void);

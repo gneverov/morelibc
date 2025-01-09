@@ -36,7 +36,7 @@ size_t ring_write(ring_t *ring, const void *buffer, size_t buffer_size);
 
 size_t ring_read(ring_t *ring, void *buffer, size_t buffer_size);
 
-size_t ring_chr(ring_t *ring, int ch);
+ssize_t ring_chr(ring_t *ring, int ch, size_t buffer_size);
 
 static inline void ring_clear(ring_t *ring) {
     ring->write_index = 0;

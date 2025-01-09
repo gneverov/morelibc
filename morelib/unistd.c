@@ -29,6 +29,7 @@ void __attribute__((noreturn, weak)) _exit(int status) {
     vTaskSuspendAll();
     // switch to MSP stack
     // clear current task
+    // flush uart
 
     while (1) {
         __breakpoint();
@@ -96,10 +97,6 @@ int chdir(const char *path) {
     return 0;
 }
 
-int close(int fd) {
-    return vfs_close(fd);
-}
-
 char *ctermid(char *s) {
     char *ret = "/dev/tty";
     return s ? strcpy(s, ret) : ret;
@@ -137,10 +134,7 @@ int fsync(int fd) {
     if (!file) {
         return -1;
     }
-    int ret = 0;
-    if (file->func->fsync) {
-        ret = file->func->fsync(file);
-    }
+    int ret = vfs_fsync(file);
     vfs_release_file(file);
     return ret;
 }
@@ -151,12 +145,7 @@ int ftruncate(int fd, off_t length) {
     if (!file) {
         return -1;
     }
-    int ret = -1;
-    if (file->func->ftruncate) {
-        ret = file->func->ftruncate(file, length);
-    } else {
-        errno = ENOSYS;
-    }
+    int ret = vfs_ftruncate(file, length);
     vfs_release_file(file);
     return ret;
 }
@@ -172,11 +161,7 @@ int getentropy(void *buffer, size_t length) {
 
 int gethostname(char *name, size_t namelen) {
     const char *hostname = getenv("HOSTNAME");
-    if (!hostname || !namelen) {
-        errno = EINVAL;
-        return -1;
-    }
-    strncpy(name, hostname, namelen);
+    strncpy(name, hostname ? hostname : "", namelen);
     return 0;
 }
 
@@ -204,64 +189,29 @@ off_t lseek(int fd, off_t offset, int whence) {
     if (!file) {
         return -1;
     }
-    int ret = -1;
-    if (file->func->lseek) {
-        ret = file->func->lseek(file, offset, whence);
-    } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ESPIPE;
-    }
+    int ret = vfs_lseek(file, offset, whence);
     vfs_release_file(file);
     return ret;
 }
 
 ssize_t pread(int fd, void *buffer, size_t size, off_t offset) {
-    if (lseek(fd, 0, SEEK_CUR) < 0) {
-        return -1;
-    }
-    if (offset < 0) {
-        errno = EINVAL;
-        return -1;
-    }
     int flags = FREAD;
     struct vfs_file *file = vfs_acquire_file(fd, &flags);
     if (!file) {
         return -1;
     }
-    int ret = -1;
-    if (file->func->pread) {
-        do {
-            ret = file->func->pread(file, buffer, size, offset);
-        }
-        while (!(flags & FNONBLOCK) && (ret < 0) && (errno == EAGAIN) && (poll_file(file, POLLIN, -1) >= 0));
-    } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
-    }
+    int ret = vfs_pread(file, buffer, size, offset);
     vfs_release_file(file);
     return ret;
 }
 
 ssize_t pwrite(int fd, const void *buffer, size_t size, off_t offset) {
-    if (lseek(fd, 0, SEEK_CUR) < 0) {
-        return -1;
-    }
-    if (offset < 0) {
-        errno = EINVAL;
-        return -1;
-    }
     int flags = FWRITE;
     struct vfs_file *file = vfs_acquire_file(fd, &flags);
     if (!file) {
         return -1;
     }
-    int ret = -1;
-    if (file->func->pwrite) {
-        do {
-            ret = file->func->pwrite(file, buffer, size, offset);
-        }
-        while (!(flags & FNONBLOCK) && (ret < 0) && (errno == EAGAIN) && (poll_file(file, POLLOUT, -1) >= 0));
-    } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
-    }
+    int ret = vfs_pwrite(file, buffer, size, offset);
     vfs_release_file(file);
     return ret;
 }
@@ -272,15 +222,7 @@ int read(int fd, void *buffer, size_t size) {
     if (!file) {
         return -1;
     }
-    int ret = -1;
-    if (file->func->read) {
-        do {
-            ret = file->func->read(file, buffer, size);
-        }
-        while (!(flags & FNONBLOCK) && (ret < 0) && (errno == EAGAIN) && (poll_file(file, POLLIN, -1) >= 0));
-    } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
-    }
+    int ret = vfs_read(file, buffer, size, flags);
     vfs_release_file(file);
     return ret;
 }
@@ -364,15 +306,7 @@ int write(int fd, const void *buffer, size_t size) {
     if (!file) {
         return -1;
     }
-    int ret = -1;
-    if (file->func->write) {
-        do {
-            ret = file->func->write(file, buffer, size);
-        }
-        while (!(flags & FNONBLOCK) && (ret < 0) && (errno == EAGAIN) && (poll_file(file, POLLOUT, -1) >= 0));
-    } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
-    }
+    int ret = vfs_write(file, buffer, size, flags);
     vfs_release_file(file);
     return ret;
 }

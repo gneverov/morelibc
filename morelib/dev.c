@@ -28,26 +28,20 @@ static const struct dev_driver *finddev(dev_t dev) {
     return NULL;
 }
 
-int opendev(dev_t dev, int flags, mode_t mode) {
+struct vfs_file *opendev(dev_t dev, mode_t mode) {
     const struct dev_driver *drv = finddev(dev);
     if (!drv) {
         errno = ENODEV;
-        return -1;
+        return NULL;
     }
     if (!drv->open) {
         errno = ENOSYS;
-        return -1;
+        return NULL;
     }
-    struct vfs_file *file = drv->open(drv, dev, flags, mode & ~S_IFMT);
-    if (!file) {
-        return -1;
-    }
-    int ret = vfs_replace(-1, file, (flags & ~O_ACCMODE) | ((flags + 1) & O_ACCMODE));
-    vfs_release_file(file);
-    return ret;
+    return drv->open(drv, dev, mode & ~S_IFMT);
 }
 
-int statdev(const void *ctx, dev_t dev, struct stat *pstat) {
+int statdev(dev_t dev, struct stat *pstat) {
     const struct dev_driver *drv = finddev(dev);
     if (!drv) {
         errno = ENODEV;

@@ -15,7 +15,7 @@ This project also contains a number of optional components for integrating popul
 
 - [FatFS](http://elm-chan.org/fsw/ff/): driver for FAT file system
 - [littlefs](https://github.com/littlefs-project/littlefs): driver for littlefs file system
-- [lwIP](https://savannah.nongnu.org/projects/lwip/): socket programming interface (*coming soon*)
+- [lwIP](https://savannah.nongnu.org/projects/lwip/): socket programming interface
 - [TinyUSB](https://github.com/hathach/tinyusb): drivers for CDC (serial) and MSC (storage) devices (USB device-side only)
 
 ## Building
@@ -31,5 +31,6 @@ This will download FreeRTOS and Pico SDK to be self-contained. An established pr
 ## Documentation
 - [Boot sequence, devices, and file systems](/doc/filesystem.md)
 - [FreeRTOS, concurrency, and multi-threading](/doc/concurrency.md)
+- [Terminals](/doc/terminals.md)
 - [Environment variables](/doc/environment.md)
 - [Function list](/doc/functions.md)

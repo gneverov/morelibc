@@ -1,186 +1,209 @@
 // SPDX-FileCopyrightText: 2024 Gregory Neverov
 // SPDX-License-Identifier: MIT
 
+#include <errno.h>
 #include <malloc.h>
-#include <poll.h>
+#include "morelib/poll.h"
 #include "morelib/thread.h"
-#include "morelib/vfs.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
 
-#define POLLFILE (POLLIN | POLLRDNORM | POLLOUT | POLLWRNORM)
-#define POLLCOM (POLLERR | POLLHUP | POLLNVAL)
 
-
-static int poll_wait(TickType_t xTicksToWait) {
+int poll_wait(TickType_t *pxTicksToWait) {
+    TimeOut_t xTimeOut;
+    vTaskSetTimeOutState(&xTimeOut);    
     if (thread_enable_interrupt()) {
         return -1;
     }
-    uint32_t ret = ulTaskNotifyTake(pdTRUE, xTicksToWait);
+    uint32_t ret = ulTaskNotifyTake(pdTRUE, *pxTicksToWait);
     thread_disable_interrupt();
-    return ret ? ret : -1;
-}
-
-struct poll_event {
-    struct poll_event *next;
-    TaskHandle_t task;
-    // uint events;
-    // uint32_t notification_value;
-};
-
-static void poll_add_waiter(struct vfs_file *file, struct poll_event *event) {
-    struct poll_event **pevent = &file->event;
-    taskENTER_CRITICAL();
-    event->next = *pevent;
-    *pevent = event;
-    taskEXIT_CRITICAL();
-}
-
-static void poll_remove_waiter(struct vfs_file *file, struct poll_event *event) {
-    struct poll_event **pevent = &file->event;
-    taskENTER_CRITICAL();
-    while (*pevent) {
-        if (*pevent == event) {
-            *pevent = event->next;
-            event->next = NULL;
-        } else {
-            pevent = &(*pevent)->next;
-        }
-    }
-    taskEXIT_CRITICAL();
-}
-
-int poll_ticks(struct pollfd fds[], nfds_t nfds, TickType_t *pxTicksToWait) {
-    struct {
-        struct vfs_file *file;
-        struct poll_event event;
-    } *array = malloc(nfds * sizeof(*array));
-    if (!array) {
+    BaseType_t timeOut = xTaskCheckForTimeOut(&xTimeOut, pxTicksToWait);
+    if (thread_check_interrupted()) {
         return -1;
     }
-
-    int count = 0;
-    TaskHandle_t task = xTaskGetCurrentTaskHandle();
-    ulTaskNotifyTake(pdTRUE, 0);
-
-    for (nfds_t i = 0; i < nfds; i++) {
-        int flags;
-        array[i].file = vfs_acquire_file(fds[i].fd, &flags);
-        array[i].event.task = task;
-        if (!array[i].file) {
-            fds[i].revents = POLLNVAL;
-        } else if (array[i].file->func->poll) {
-            poll_add_waiter(array[i].file, &array[i].event);
-        } else {
-            fds[i].revents = POLLFILE;
-            vfs_release_file(array[i].file);
-            array[i].file = NULL;
-        }
+    if (timeOut) {
+        errno = EAGAIN;
+        return -1;
     }
-
-    TimeOut_t xTimeOut;
-    vTaskSetTimeOutState(&xTimeOut);
-    for (;;) {
-        for (nfds_t i = 0; i < nfds; i++) {
-            if (array[i].file) {
-                fds[i].revents = array[i].file->func->poll(array[i].file);
-            }
-            fds[i].revents &= fds[i].events | POLLCOM;
-            if (fds[i].revents) {
-                count++;
-            }
-        }
-        if (count || xTaskCheckForTimeOut(&xTimeOut, pxTicksToWait)) {
-            break;
-        }
-        if (poll_wait(*pxTicksToWait) < 0) {
-            count = -1;
-            break;
-        }
-    }
-
-    for (nfds_t i = 0; i < nfds; i++) {
-        if (array[i].file) {
-            poll_remove_waiter(array[i].file, &array[i].event);
-            vfs_release_file(array[i].file);
-        }
-    }
-
-    free(array);
-    return count;
+    return ret;    
 }
 
-int poll(struct pollfd fds[], nfds_t nfds, int timeout) {
-    TickType_t xTicksToWait = timeout < 0 ? portMAX_DELAY : pdMS_TO_TICKS(timeout);
-    return poll_ticks(fds, nfds, &xTicksToWait);
+void poll_waiter_init(struct poll_waiter *desc, uint events, poll_notification_t notify) {
+    desc->next = NULL;
+    desc->events = events | POLLCOM;
+    desc->notify = notify;
 }
 
-void poll_notify(struct vfs_file *file, uint events) {
-    struct poll_event **pevent = &file->event;
+void poll_waiter_add(struct poll_file *file, struct poll_waiter *desc) {
     taskENTER_CRITICAL();
-    while (*pevent) {
-        struct poll_event *event = *pevent;
-        // if (event->events & events) {
-        xTaskNotifyGive(event->task);
-        // }
-        pevent = &event->next;
+    struct poll_waiter **pdesc = &file->waiters;
+    desc->next = *pdesc;
+    *pdesc = desc;
+    if (desc->events & file->events) {
+        desc->notify(desc, NULL);
+    }    
+    taskEXIT_CRITICAL();
+}
+
+void poll_waiter_remove(struct poll_file *file, struct poll_waiter *desc) {
+    taskENTER_CRITICAL();
+    struct poll_waiter **pdesc = &file->waiters;
+    while (*pdesc) {
+        if (*pdesc == desc) {
+            *pdesc = desc->next;
+            desc->next = NULL;
+        } else {
+            pdesc = &(*pdesc)->next;
+        }
     }
     taskEXIT_CRITICAL();
 }
 
-void poll_notify_from_isr(struct vfs_file *file, uint events, BaseType_t *pxHigherPriorityTaskWoken) {
-    struct poll_event **pevent = &file->event;
+void poll_file_init(struct poll_file *file, const struct vfs_file_vtable *func, mode_t mode, uint events) {
+    assert(func->pollable);
+    vfs_file_init(&file->base, func, mode);
+    file->waiters = NULL;
+    file->events = events;
+}
+
+struct poll_file *poll_file_acquire(int fd, int *flags) {
+    struct vfs_file *file = vfs_acquire_file(fd, flags);
+    if (!file) {
+        return NULL;
+    }
+    if (file->func->pollable) {
+        return (void *)file;        
+    }
+    vfs_release_file(file);
+    errno = EPERM;
+    return NULL;
+}
+
+void poll_file_notify(struct poll_file *file, uint clear_events, uint set_events) {
+    taskENTER_CRITICAL();
+    uint new_events = ~file->events & set_events;
+    file->events &= ~clear_events;
+    file->events |= set_events;
+    if (new_events) {
+        struct poll_waiter *desc = file->waiters;
+        while (desc) {
+            if (desc->events & new_events) {
+                desc->notify(desc, NULL);
+            }
+            desc = desc->next;
+        }
+    }
+    taskEXIT_CRITICAL();
+}
+
+void poll_file_notify_from_isr(struct poll_file *file, uint clear_events, uint set_events, BaseType_t *pxHigherPriorityTaskWoken) {
     UBaseType_t uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
-    while (*pevent) {
-        struct poll_event *event = *pevent;
-        // if (event->events & events) {
-        vTaskNotifyGiveFromISR(event->task, pxHigherPriorityTaskWoken);
-        // }
-        pevent = &event->next;
+    uint new_events = ~file->events & set_events;
+    file->events &= ~clear_events;
+    file->events |= set_events;
+    if (new_events) {
+        struct poll_waiter *desc = file->waiters;
+        while (desc) {
+            if (desc->events & new_events) {
+                desc->notify(desc, pxHigherPriorityTaskWoken);
+            }
+            desc = desc->next;
+        }
     }
     taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
 }
+struct ppoll_waiter {
+    struct poll_waiter base;
+    TaskHandle_t task;
+    struct poll_file *file;
+};
 
-int poll_file(struct vfs_file *file, uint events, int timeout) {
-    struct poll_event event = {
-        .next = NULL,
-        .task = xTaskGetCurrentTaskHandle(),
-        // .events = events,
-    };
-    uint revents = 0;
-    int count = 0;
+static void ppoll_notify(const void *ptr, BaseType_t *pxHigherPriorityTaskWoken) {
+    const struct ppoll_waiter *desc = ptr;
+    if (pxHigherPriorityTaskWoken) {
+        vTaskNotifyGiveFromISR(desc->task, pxHigherPriorityTaskWoken);
+    }
+    else {
+        xTaskNotifyGive(desc->task);
+    }
+}
+
+uint poll_file_poll(struct poll_file *file) {
+    taskENTER_CRITICAL();
+    uint revents = file->events;
+    taskEXIT_CRITICAL();
+    return revents;
+}
+
+int poll_file_wait(struct poll_file *file, uint events, TickType_t *pxTicksToWait) {
+    struct ppoll_waiter desc;
+    poll_waiter_init(&desc.base, events, ppoll_notify);
+    desc.task = xTaskGetCurrentTaskHandle();
+    desc.file = NULL;
     ulTaskNotifyTake(pdTRUE, 0);
+    poll_waiter_add(file, &desc.base);
 
-    if (file->func->poll) {
-        poll_add_waiter(file, &event);
-    } else {
-        revents = POLLFILE;
-        file = NULL;
+    int ret = poll_wait(pxTicksToWait);
+
+    poll_waiter_remove(file, &desc.base);
+    return ret;
+}
+
+
+int poll(struct pollfd fds[], nfds_t nfds, int timeout) {
+    struct ppoll_waiter *descs = calloc(nfds, sizeof(struct ppoll_waiter));
+    if (!descs) {
+        return -1;
     }
 
-    TimeOut_t xTimeOut;
-    vTaskSetTimeOutState(&xTimeOut);
-    TickType_t xTicksToWait = timeout < 0 ? portMAX_DELAY : pdMS_TO_TICKS(timeout);
-    for (;;) {
-        if (file) {
-            revents = file->func->poll(file);
-            revents &= events | POLLCOM;
+    ulTaskNotifyTake(pdTRUE, 0);
+    size_t num_waiters = 0;
+    for (nfds_t i = 0; i < nfds; i++) {
+        poll_waiter_init(&descs[i].base, fds[i].events, ppoll_notify);
+        fds[i].revents = 0;
+        if (fds[i].fd < 0) {
+            continue;
         }
-        if (revents) {
-            count++;
+        int flags = 0;
+        struct vfs_file *file = vfs_acquire_file(fds[i].fd, &flags);
+        if (!file) {
+            fds[i].revents = POLLNVAL;
+            continue;
         }
-        if (count || xTaskCheckForTimeOut(&xTimeOut, &xTicksToWait)) {
-            break;
+        if (!file->func->pollable) {
+            fds[i].revents = POLLFILE;
+            vfs_release_file(file);
+            continue;
         }
-        if (poll_wait(xTicksToWait) < 0) {
-            count = -1;
-            break;
-        }
+        descs[i].task = xTaskGetCurrentTaskHandle();
+        descs[i].file = (void *)file;
+        poll_waiter_add(descs[i].file, &descs[i].base);
+        num_waiters++;
     }
 
-    if (file) {
-        poll_remove_waiter(file, &event);
+    TickType_t xTicksToWait = (timeout < 0) ? portMAX_DELAY : pdMS_TO_TICKS(timeout);
+    int ret = num_waiters ? poll_wait(&xTicksToWait) : 0;
+    int errcode = errno;
+
+    size_t num_fds = 0;
+    for (nfds_t i = 0; i < nfds; i++) {
+        if (descs[i].file) {
+            fds[i].revents = poll_file_poll(descs[i].file) & fds[i].events;
+            poll_waiter_remove(descs[i].file, &descs[i].base);
+            poll_file_release(descs[i].file);            
+        }
+        if (fds[i].revents) {
+            num_fds++;
+        }
     }
-    return count;
+    free(descs);
+
+    if ((ret < 0) && (errcode != EAGAIN)) {
+        errno = errcode;
+        return ret;
+    }
+    else {
+        return num_fds;
+    }
 }

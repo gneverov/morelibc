@@ -65,6 +65,9 @@ Morelibc seeks to augment Picolibc with more functionality from the standard C/P
 | `pselect` | 🔴 | No signal mask. |
 | `select` | 🔴 | |
 
+## sys/socket.h
+See [list](./socket.md) of socket-related functions.
+
 ## sys/stat.h
 | Function | Status | Notes |
 | - | - | - |

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Gregory Neverov
 // SPDX-License-Identifier: MIT
 
+#include "tusb.h"
 #include "tinyusb/net_device_lwip.h"
 
 

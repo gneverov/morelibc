@@ -364,7 +364,7 @@ static int littlefs_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     return littlefs_result(lfs_file_read(&file->vfs->lfs, &file->file, buffer, size));
 }
 
-static int littlefs_read(void *ctx, void *buffer, size_t size) {
+static int littlefs_read(void *ctx, void *buffer, size_t size, int flags) {
     struct littlefs_file *file = ctx;
     int result = littlefs_pread(file, buffer, size, file->pos);
     file->pos = lfs_file_tell(&file->vfs->lfs, &file->file);
@@ -398,7 +398,7 @@ static int littlefs_pwrite(void *ctx, const void *buffer, size_t size, off_t off
     return littlefs_result(lfs_file_write(&file->vfs->lfs, &file->file, buffer, size));
 }
 
-static int littlefs_write(void *ctx, const void *buffer, size_t size) {
+static int littlefs_write(void *ctx, const void *buffer, size_t size, int flags) {
     struct littlefs_file *file = ctx;
     int result = littlefs_pwrite(file, buffer, size, file->pos);
     file->pos = lfs_file_tell(&file->vfs->lfs, &file->file);

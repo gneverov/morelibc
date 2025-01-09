@@ -436,7 +436,7 @@ static int fatfs_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     return br;
 }
 
-static int fatfs_read(void *ctx, void *buffer, size_t size) {
+static int fatfs_read(void *ctx, void *buffer, size_t size, int flags) {
     struct fatfs_file *file = ctx;
     int result = fatfs_pread(file, buffer, size, file->pos);
     file->pos = f_tell(&file->fp);
@@ -473,7 +473,7 @@ static int fatfs_pwrite(void *ctx, const void *buffer, size_t size, off_t offset
     return bw;
 }
 
-static int fatfs_write(void *ctx, const void *buffer, size_t size) {
+static int fatfs_write(void *ctx, const void *buffer, size_t size, int flags) {
     struct fatfs_file *file = ctx;
     int result = fatfs_pwrite(file, buffer, size, file->pos);
     file->pos = f_tell(&file->fp);

@@ -189,19 +189,21 @@ void thread_interrupt(thread_t *thread) {
     thread_unlock();
 }
 
-// int thread_check_interrupted(void) {
-//     thread_t *thread = thread_current();
-//     thread_lock();
-//     enum thread_interrupt_state state = thread->state;
-//     thread->state &= ~TASK_INTERRUPT_SET;
-//     thread_unlock();
-
-//     if (state & TASK_INTERRUPT_SET) {
-//         errno = EINTR;
-//         return -1;
-//     }
-//     return 0;
-// }
+int thread_check_interrupted(void) {
+    thread_t *thread = thread_current();
+    if (!thread) {
+        return 0;
+    }    
+    thread_lock();
+    if (thread->state & TASK_INTERRUPT_SET) {
+        thread->state &= ~TASK_INTERRUPT_SET;
+        thread_unlock();
+        errno = EINTR;
+        return -1;
+    }
+    thread_unlock();
+    return 0;
+}
 
 thread_t *thread_current(void) {
     return pvTaskGetThreadLocalStoragePointer(NULL, TLS_INDEX_SYS);

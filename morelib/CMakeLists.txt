@@ -8,7 +8,7 @@ target_sources(morelib_core INTERFACE
     devfs.c
     dirent.c
     dlfcn.c
-    event.c
+    # epoll.c
     fcntl.c
     flash.c
     flash_env.c
@@ -25,6 +25,7 @@ target_sources(morelib_core INTERFACE
     signal.c
     stat.c
     statvfs.c
+    term_mux.c
     termios.c
     thread.c
     time.c
@@ -32,6 +33,7 @@ target_sources(morelib_core INTERFACE
     unistd.c
     utsname.c
     vfs.c
+    vfs_file.c
 )
 
 set_source_files_properties(

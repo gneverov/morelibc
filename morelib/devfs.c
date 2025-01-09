@@ -62,13 +62,7 @@ static void *devfs_open(void *ctx, const char *path, int flags, mode_t mode) {
         errno = EISDIR;
         return NULL;
     }
-    int fd = opendev(entry->dev, flags, entry->mode);
-    if (fd < 0) {
-        return NULL;
-    }
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
-    close(fd);
-    return file;
+    return opendev(entry->dev, entry->mode);
 }
 
 static void *devfs_opendir(void *ctx, const char *dirname) {
@@ -81,11 +75,7 @@ static void *devfs_opendir(void *ctx, const char *dirname) {
         return NULL;
     }
     if (entry->dev) {
-        int fd = opendev(entry->dev, O_SEARCH, entry->mode);
-        if (fd < 0) {
-            return NULL;
-        }
-        return fdopendir(fd);
+        return opendev(entry->dev, entry->mode);
     }
     struct devfs_dir *dir = malloc(sizeof(struct devfs_dir));
     if (!dir) {

@@ -6,15 +6,23 @@
 #include "morelib/tty.h"
 
 
-static void *tty_open(const void *ctx, dev_t dev, int flags, mode_t mode) {
-    if (dev != DEV_TTY) {
-        errno = ENODEV;
-        return NULL;
-    }
-    struct vfs_file *file = vfs_gettty();
-    if (!file) {
-        errno = ENODEV;
-        return NULL;
+void *term_mux_open(const void *ctx, dev_t dev, mode_t mode);
+
+static void *tty_open(const void *ctx, dev_t dev, mode_t mode) {
+    struct vfs_file *file = NULL;
+    switch (dev) {
+        case DEV_TTY:
+            file = vfs_gettty();
+            if (!file) {
+                errno = ENODEV;
+            }            
+            break;
+        case DEV_TMUX:
+            file = term_mux_open(ctx, dev, mode);
+            break;
+        default:
+            errno = ENODEV;
+            break;
     }
     return file;
 }

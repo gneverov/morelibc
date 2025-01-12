@@ -12,7 +12,9 @@
  * non-allocating, and so they cannot allocate a task on-the-fly.
  */
 
-#if configUSE_IPIS
+#if configNUMBER_OF_CORES == 1
+// no flash lockout for single core
+#elif configUSE_IPIS
 #include "freertos/interrupts.h"
 
 #include "hardware/irq.h"

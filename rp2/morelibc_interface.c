@@ -56,9 +56,7 @@ void inittimeofday(void) {
         struct timespec ts;
         aon_timer_get_time(&ts);
 
-        struct timeval tv;
-        TIMESPEC_TO_TIMEVAL(&tv, &ts);
-        int64_t us_since_epoch = tv.tv_sec * 1000000 + tv.tv_usec;
+        int64_t us_since_epoch = (ts.tv_sec * 1000ll + ts.tv_nsec) * 1000ll;
         epoch_time_us_since_boot = (int64_t)to_us_since_boot(get_absolute_time()) - us_since_epoch;
     }
 }

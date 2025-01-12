@@ -201,6 +201,7 @@ static int scan_psram_cs(size_t *size) {
         psram_cs = strtoul(psram_cs_str, &end, 10);
         if (!*end && (psram_cs < NUM_BANK0_GPIOS)) {
             gpio_set_function(psram_cs, GPIO_FUNC_XIP_CS1);
+            *size = probe_psram(psram_cs);
             return psram_cs;
         }
     }

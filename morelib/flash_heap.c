@@ -22,13 +22,15 @@ static flash_heap_header_t flash_heap_flash_head = { 0, 0, 0, &end, NULL };
 
 #if PSRAM_BASE
 __attribute__((section(".psram_heap")))
-static flash_heap_header_t flash_heap_psram_head = { 0, 0, 0, 0, NULL };
+static flash_heap_header_t flash_heap_psram_head = { 0, 0, 0, &__StackLimit, NULL };
 #endif
 
 const flash_heap_header_t *const flash_heap_head[FLASH_HEAP_NUM_DEVICES] = {
     &flash_heap_flash_head,
     #if PSRAM_BASE
     &flash_heap_psram_head,
+    #else
+    NULL,
     #endif
 };
 
@@ -65,7 +67,7 @@ error:
     return -1;
 }
 
-__attribute__((constructor(101), visibility("hidden")))
+__attribute__((constructor(103), visibility("hidden")))
 void flash_heap_init(void) {
     const flash_heap_header_t *header = flash_heap_head[0];
     while (header->type) {
@@ -77,7 +79,13 @@ void flash_heap_init(void) {
         header = ((void *)header) + header->flash_size;
     }
     flash_heap_tail[0] = header;
+
+    #if PSRAM_BASE
+    // PSRAM section is not initialized with data and BSS sections. Initialize its only variable here.
+    flash_heap_psram_head = (flash_heap_header_t) { 0, 0, 0, &__StackLimit, NULL };
+    // PSRAM is cleared on reset, so reset tail to head.
     flash_heap_tail[1] = flash_heap_head[1];
+    #endif
 }
 
 const flash_heap_header_t *flash_heap_next_header(uint device) {

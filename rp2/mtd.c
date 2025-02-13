@@ -27,6 +27,7 @@
 #include <sys/time.h>
 
 #include "hardware/flash.h"
+#include "hardware/xip_cache.h"
 #include "rp2/mtd.h"
 #include "flash.h"
 #include "rp2/flash_lockout.h"
@@ -38,7 +39,7 @@ static struct mtd_partition mtd_partitions[MTD_NUM_PARTITIONS];
 
 static struct mtd_file *mtd_files[MTD_NUM_PARTITIONS];
 
-__attribute__((constructor, visibility("hidden")))
+__attribute__((constructor(102), visibility("hidden")))
 void mtd_init(void) {
     int j = 0;
     mtd_flash_probe(&mtd_devs[0]);
@@ -79,7 +80,7 @@ void mtd_init(void) {
         }
     }
 
-    #if !PICO_RP2040
+    #if !PICO_RP2040 && PSRAM_BASE
     mtd_psram_probe(&mtd_devs[1]);
     if (mtd_devs[1].info.type) {
         // default single partition
@@ -191,6 +192,7 @@ static void *mtd_mmap(void *ctx, void *addr, size_t len, int prot, int flags, of
 static int mtd_rread(struct mtd_file *file, void *buffer, size_t size, off_t *offset) {
     const struct mtd_partition *part = &mtd_partitions[file->index];
     size = MIN(size, part->size - *offset);
+    // xip_cache_clean_range(part->offset + (*offset & ~7), ((*offset + size + 7) & ~7) - (*offset & ~7));
     memcpy(buffer, (void *)(part->offset + *offset + part->device->rw_addr), size);
     *offset += size;
     return size;
@@ -199,9 +201,9 @@ static int mtd_rread(struct mtd_file *file, void *buffer, size_t size, off_t *of
 static int mtd_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
-    int result = mtd_rread(file, buffer, size, &offset);
+    int ret = mtd_rread(file, buffer, size, &offset);
     xSemaphoreGive(file->mutex);
-    return result;
+    return ret;
 }
 
 static int mtd_rwrite(struct mtd_file *file, const void *buffer, size_t size, off_t *offset) {
@@ -220,6 +222,7 @@ static int mtd_rwrite(struct mtd_file *file, const void *buffer, size_t size, of
         flash_lockout_end();
     } else {
         memcpy((void *)(part->offset + *offset + part->device->rw_addr), buffer, size);
+        // xip_cache_invalidate_range(part->offset + (*offset & ~7), ((*offset + size + 7) & ~7) - (*offset & ~7));
     }
     *offset += size;
     file->mtime.tv_sec = t.tv_sec;
@@ -234,15 +237,15 @@ static int mtd_pwrite(void *ctx, const void *buffer, size_t size, off_t offset) 
         return -1;
     }
     xSemaphoreTake(file->mutex, portMAX_DELAY);
-    int result = mtd_rwrite(file, buffer, size, &offset);
+    int ret = mtd_rwrite(file, buffer, size, &offset);
     xSemaphoreGive(file->mutex);
-    return result;
+    return ret;
 }
 
 static int mtd_read(void *ctx, void *buffer, size_t size, int flags) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
-    int ret = mtd_pread(file, buffer, size, file->pos);
+    int ret = mtd_rread(file, buffer, size, &file->pos);
     xSemaphoreGive(file->mutex);
     return ret;
 }
@@ -250,7 +253,7 @@ static int mtd_read(void *ctx, void *buffer, size_t size, int flags) {
 static int mtd_write(void *ctx, const void *buffer, size_t size, int flags) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
-    int ret = mtd_pwrite(file, buffer, size, file->pos);
+    int ret = mtd_rwrite(file, buffer, size, &file->pos);
     xSemaphoreGive(file->mutex);
     return ret;
 }
@@ -301,3 +304,19 @@ const struct dev_driver mtd_drv = {
     .dev = DEV_MTD0,
     .open = mtd_open,
 };
+
+
+#include <stdio.h>
+#include "morelib/flash_heap.h"
+
+__attribute__((visibility("hidden")))
+void print_banner(void) {
+    #if PICO_RP2040
+    printf("\n\nRaspberry Pi RP2040 \n%lu MB flash, no PSRAM\n", mtd_devs[0].info.size >> 20);
+    #else
+    printf("\n\nRaspberry Pi RP2350 \n%lu MB flash, %lu MB PSRAM\n", mtd_devs[0].info.size >> 20, mtd_devs[1].info.size >> 20);
+    #endif
+    
+    uintptr_t ram_base = (uintptr_t)flash_heap_next_header(0)->ram_base;
+    printf("%u kB RAM, %u kB free\n", (SRAM_END - SRAM_BASE) >> 10, (SRAM_STRIPED_END - ram_base) >> 10);
+}

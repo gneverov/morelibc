@@ -157,6 +157,9 @@ static int term_uart_ioctl(void *ctx, unsigned long request, va_list args) {
         case TCSETS: {
             const struct termios *p = va_arg(args, const struct termios *);
             file->termios = *p;
+            uint baudrate = MAX(p->c_ispeed, p->c_ospeed);
+            baudrate = uart_set_baudrate(file->uart, baudrate);
+            file->termios.c_ispeed = file->termios.c_ospeed = baudrate;
             ret = 0;
             break;
         }

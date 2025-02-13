@@ -251,8 +251,7 @@ SECTIONS
     PROVIDE_HIDDEN(__heap_end = __HeapLimit);
 
     .flash_heap (READONLY) : ALIGN(4k) {
-        HIDDEN(__flash_heap_start = .);
-        *(.flash_heap*)
+        *(.flash_heap .flash_heap.*)
     } > FLASH
 
     /* Check if data + heap + stack exceeds RAM limit */

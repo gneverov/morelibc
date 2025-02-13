@@ -5,7 +5,7 @@
 
 #include "hardware/flash.h"
 #include "hardware/gpio.h"
-#if !PICO_RP2040
+#if !PICO_RP2040 && PSRAM_BASE
 #include "freertos/interrupts.h"
 #include "hardware/gpio.h"
 #include "hardware/structs/qmi.h"
@@ -45,7 +45,7 @@ void mtd_flash_probe(struct mtd_device *device) {
     }
 }
 
-#if !PICO_RP2040
+#if !PICO_RP2040 && PSRAM_BASE
 // SPDX-SnippetBegin
 // SPDX-SnippetCopyrightText: Copyright (c) 2021 Scott Shawcroft for Adafruit Industries
 // SPDX-License-Identifier: MIT

@@ -42,6 +42,11 @@ set_source_files_properties(
     PROPERTIES COMPILE_OPTIONS -fvisibility=hidden
 )
 
+target_link_options(morelib_core INTERFACE
+    LINKER:--wrap=setenv
+    LINKER:--wrap=unsetenv
+)
+
 add_library(morelib_headers INTERFACE)
 target_include_directories(morelib_headers INTERFACE include)
 

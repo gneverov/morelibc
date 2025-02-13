@@ -101,12 +101,18 @@ static void *mtdblk_get_page(struct mtdblk_file *file, size_t pos) {
 
 static void *mtdblk_find_page(struct mtdblk_file *file, size_t pos, size_t *len) {
     assert(pos < file->size);
-    size_t offset = pos % file->block_size;
-    *len = file->block_size - offset;
-    size_t page_num = pos / file->block_size;
-    size_t cache_index = page_num % MTDBLK_NUM_CACHE_ENTRIES;
-    struct mtdblk_cache_entry *entry = &file->cache[cache_index];
-    return (entry->page && (entry->num == page_num)) ? entry->page + offset : NULL;
+    if (file->block_size > 1) {
+        size_t offset = pos % file->block_size;
+        *len = file->block_size - offset;
+        size_t page_num = pos / file->block_size;
+        size_t cache_index = page_num % MTDBLK_NUM_CACHE_ENTRIES;
+        struct mtdblk_cache_entry *entry = &file->cache[cache_index];
+        return (entry->page && (entry->num == page_num)) ? entry->page + offset : NULL;
+    }
+    else {
+        *len = -1;
+        return NULL;
+    }
 }
 
 static int mtdblk_flush(struct mtdblk_file *file) {

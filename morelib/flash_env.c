@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <malloc.h>
 #include <stddef.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -31,25 +32,9 @@ void env_init(void) {
     }
 }
 
-static int env_compare(void) {
-    if (environ == (char **)flash_env.env) {
-        return 0;
-    }
-    char **e = environ;
-    for (int i = 0; i < FLASH_ENV_MAX; i++) {
-        if (*e != flash_env.env[i]) {
-            return 1;
-        }
-        if (*e) {
-            e++;
-        }
-    }
-    return 0;
-}
-
 __attribute__((destructor, visibility("hidden")))
 int env_fini(void) {
-    if (!env_compare()) {
+    if (environ == (char **)flash_env.env) {
         return 0;
     }
 
@@ -98,4 +83,36 @@ int env_fini(void) {
 exit:
     close(fd);
     return ret;
+}
+
+static int env_copy(void) {
+    if (environ != (char **)flash_env.env) {
+        return 0;
+    }    
+    environ = calloc(FLASH_ENV_MAX + 1, sizeof(char *));
+    if (!environ) {
+        return -1;
+    }
+    for (int i = 0; i < FLASH_ENV_MAX; i++) {
+        if (flash_env.env[i]) {
+            environ[i] = strdup(flash_env.env[i]);
+        }
+    }
+    return 1;
+}
+
+int __wrap_setenv(const char *name, const char *value, int rewrite) {
+    int __real_setenv(const char *name, const char *value, int rewrite);
+    if (env_copy() < 0) {
+        return -1;
+    }
+    return __real_setenv(name, value, rewrite);
+}
+
+int __wrap_unsetenv(const char *name) {
+    int __real_unsetenv(const char *name);
+    if (env_copy() < 0) {
+        return -1;
+    }
+    return __real_unsetenv(name);
 }

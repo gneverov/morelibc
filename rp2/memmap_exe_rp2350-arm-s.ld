@@ -262,10 +262,13 @@ SECTIONS
     PROVIDE_HIDDEN(__heap_end = __HeapLimit);
 
     .flash_heap (READONLY) : ALIGN(4k) {
-        HIDDEN(__flash_heap_start = .);
-        *(.flash_heap*)
+        *(.flash_heap .flash_heap.*)
     } > FLASH
     
+    .psram_heap : ALIGN(4k) {
+        *(.psram_heap .psram_heap.*)
+    } > PSRAM
+
     /* Check if data + heap + stack exceeds RAM limit */
     ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed")
 

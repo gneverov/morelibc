@@ -25,8 +25,7 @@ int vfs_ioctl(struct vfs_file *file, unsigned long request, ...) {
 }
 
 int ioctl(int fd, unsigned long request, ...) {
-    int flags = 0;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
     if (!file) {
         return -1;
     }

@@ -64,11 +64,13 @@ cleanup:
 }
 
 static void tud_msc_close(uint8_t lun) {
-    fsync(tud_msc_disk.fd);
-    close(tud_msc_disk.fd);
-    tud_msc_disk.fd = 0;
-    tud_msc_disk.ssize = 0;
-    tud_msc_disk.eject = 0;
+    if (tud_msc_disk.ssize != 0) {
+        ioctl(tud_msc_disk.fd, BLKFLSBUF, NULL);
+        close(tud_msc_disk.fd);
+        tud_msc_disk.fd = 0;
+        tud_msc_disk.ssize = 0;
+        tud_msc_disk.eject = 0;
+    }
 }
 
 /**

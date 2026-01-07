@@ -5,7 +5,6 @@
 #include <signal.h>
 #include <sys/ioctl.h>
 #include "morelib/poll.h"
-#include "morelib/telnet.h"
 #include "morelib/termios.h"
 
 #include "FreeRTOS.h"
@@ -13,7 +12,8 @@
 
 #include "lwip/tcpip.h"
 
-#include "./socket.h"
+#include "morelib/lwip/socket.h"
+#include "morelib/lwip/telnet.h"
 
 
 enum {
@@ -37,7 +37,7 @@ typedef struct {
     StaticSemaphore_t xMutexBuffer;
 } term_net_t;
 
-static term_net_t *term_net_open(const struct telnet_server *server, struct tcp_pcb *pcb, mode_t mode);
+static term_net_t *term_net_open(const struct telnet_server *server, struct tcp_pcb *pcb);
 
 static void telnet_server_err(void *arg, err_t err) {
     struct telnet_server *server = arg;
@@ -48,13 +48,13 @@ static void telnet_server_err(void *arg, err_t err) {
 
 static err_t telnet_server_accept(void *arg, struct tcp_pcb *new_pcb, err_t err) {
     struct telnet_server *server = arg;
-    term_net_t *file = term_net_open(server, new_pcb, 0);
+    term_net_t *file = term_net_open(server, new_pcb);
     if (!file) {
         tcp_abort(new_pcb);
         return ERR_ABRT;
     }
 
-    int fd = poll_file_fd(&file->base, FREAD | FWRITE);
+    int fd = poll_file_fd(&file->base);
     if (fd >= 0) {
         server->accept_fn(server->accept_arg, fd);
     }
@@ -97,7 +97,7 @@ int telnet_server_init(struct telnet_server *server, struct sockaddr *address, s
     ip_addr_t ipaddr;
     u16_t port;
     socket_sockaddr_to_lwip(address, address_len, &ipaddr, &port);
-    ret = socket_check_ret(tcp_bind(pcb, &ipaddr, port));
+    ret = socket_lwip_check_ret(tcp_bind(pcb, &ipaddr, port));
     if (ret < 0) {
         goto exit;
     }
@@ -295,7 +295,7 @@ static int telnet_input(term_net_t *file, void *buffer, size_t size, size_t *tot
     return write - (char *)buffer;
 }
 
-static int term_net_read(void *ctx, void *buffer, size_t size, int flags) {
+static int term_net_read(void *ctx, void *buffer, size_t size) {
     term_net_t *file = ctx;
     if (!size) {
         errno = EINVAL;
@@ -330,7 +330,7 @@ static int term_net_read(void *ctx, void *buffer, size_t size, int flags) {
             UNLOCK_TCPIP_CORE();
         }
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));    
+    while (POLL_CHECK(ret, &file->base, POLLIN, &xTicksToWait));    
     return ret;
 }
 
@@ -373,7 +373,7 @@ static int telnet_output(term_net_t *file, const void *buffer, size_t size) {
 exit:
     UNLOCK_TCPIP_CORE();
     if (err != ERR_OK) {
-        return socket_check_ret(err);
+        return socket_lwip_check_ret(err);
     }
     else if (remaining < size) {
         return size - remaining;
@@ -384,7 +384,7 @@ exit:
     }
 }
 
-static int term_net_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int term_net_write(void *ctx, const void *buffer, size_t size) {
     term_net_t *file = ctx;
     if (!size) {
         errno = EINVAL;
@@ -398,7 +398,7 @@ static int term_net_write(void *ctx, const void *buffer, size_t size, int flags)
             poll_file_notify(&file->base, POLLOUT | POLLWRNORM, 0);
         }
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLOUT, &xTicksToWait));
+    while (POLL_CHECK(ret, &file->base, POLLOUT, &xTicksToWait));
     return ret;
 }
 
@@ -411,13 +411,13 @@ static const struct vfs_file_vtable term_net_vtable = {
     .write = term_net_write,
 };
 
-static term_net_t *term_net_open(const struct telnet_server *server, struct tcp_pcb *pcb, mode_t mode) {
+static term_net_t *term_net_open(const struct telnet_server *server, struct tcp_pcb *pcb) {
     term_net_t *file = calloc(1, sizeof(term_net_t));
     if (!file) {
         return NULL;
     }
 
-    poll_file_init(&file->base, &term_net_vtable, mode | S_IFCHR, POLLIN | POLLOUT| POLLDRAIN);
+    poll_file_init(&file->base, &term_net_vtable, O_RDWR, POLLIN | POLLOUT| POLLDRAIN);
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
     file->pcb = pcb;
     termios_init(&file->termios, 0);

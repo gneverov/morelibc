@@ -3,7 +3,6 @@
 
 #include <errno.h>
 #include <time.h>
-#include "morelib/ping.h"
 #include "morelib/poll.h"
 
 #include "FreeRTOS.h"
@@ -14,7 +13,8 @@
 #include "lwip/prot/ip4.h"
 #include "lwip/raw.h"
 
-#include "./socket.h"
+#include "morelib/lwip/ping.h"
+#include "morelib/lwip/socket.h"
 
 // TTL for ping requests (0 means default)
 #define PING_TTL 0
@@ -49,21 +49,22 @@ typedef struct ping_socket {
 
 static u8_t ping_socket_recv(void *arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *addr);
 
-static int ping_socket_init(ping_socket_t *socket, u8_t ttl) {
+static int ping_socket_init(ping_socket_t *socket, const ip_addr_t *ipaddr, u8_t ttl) {
     socket->task = xTaskGetCurrentTaskHandle();
-    LOCK_TCPIP_CORE();
-    struct raw_pcb *pcb = raw_new(IP_PROTO_ICMP);
-    if (pcb) {
-        if (ttl) {
-            pcb->ttl = ttl;
-        }
-        raw_recv(pcb, ping_socket_recv, socket);
-        raw_bind(pcb, IP_ADDR_ANY);
-    }
-    UNLOCK_TCPIP_CORE();
+    u8_t type = IP_GET_TYPE(ipaddr);
+    struct raw_pcb *pcb = raw_new_ip_type(type, (type == IPADDR_TYPE_V6) ? IP6_NEXTH_ICMP6 : IP_PROTO_ICMP);
     if (!pcb) {
-        return socket_check_ret(ERR_MEM);
+        errno = ENOMEM;
+        return -1;
     }
+    if (ttl) {
+        pcb->ttl = ttl;
+    }
+    raw_recv(pcb, ping_socket_recv, socket);
+    struct netif *netif;
+    const ip_addr_t *bind_addr;
+    ip_route_get_local_ip(IP46_ADDR_ANY(type), ipaddr, netif, bind_addr);        
+    raw_bind(pcb, bind_addr);
     socket->pcb = pcb;
     return 0;
 }
@@ -80,43 +81,69 @@ static void ping_socket_deinit(ping_socket_t *socket) {
 static int ping_socket_sendto(ping_socket_t *socket, const void *buf, u16_t len, const ip_addr_t *ipaddr) {
     struct pbuf *p = pbuf_alloc(PBUF_IP, sizeof(struct icmp_echo_hdr) + len, PBUF_RAM);
     if (!p) {
-        return socket_check_ret(ERR_MEM);
+        errno = ENOMEM;
+        return -1;
     }
 
     u16_t seqno = ++ping_seqno;
-    struct icmp_echo_hdr *hdr = p->payload;
-    ICMPH_TYPE_SET(hdr, ICMP_ECHO);
-    ICMPH_CODE_SET(hdr, 0);
-    hdr->chksum = 0;
-    hdr->id = PING_ID;
-    hdr->seqno = lwip_htons(seqno);
+    if (IP_IS_V6(ipaddr)) {
+        struct icmp6_echo_hdr *hdr = p->payload;
+        hdr->type = ICMP6_TYPE_EREQ;
+        hdr->code = 0;
+        hdr->chksum = 0;
+        hdr->id = PING_ID;
+        hdr->seqno = lwip_htons(seqno);
+        pbuf_take_at(p, buf, len, sizeof(struct icmp6_echo_hdr));
+        hdr->chksum = ip_chksum_pseudo(p, IP6_NEXTH_ICMP6, p->tot_len, &socket->pcb->local_ip, ipaddr);
+    }
+    else {
+        struct icmp_echo_hdr *hdr = p->payload;
+        ICMPH_TYPE_SET(hdr, ICMP_ECHO);
+        ICMPH_CODE_SET(hdr, 0);
+        hdr->chksum = 0;
+        hdr->id = PING_ID;
+        hdr->seqno = lwip_htons(seqno);
+        pbuf_take_at(p, buf, len, sizeof(struct icmp_echo_hdr));
+        hdr->chksum = inet_chksum_pbuf(p);
+    }
 
-    err_t err = pbuf_take_at(p, buf, len, sizeof(struct icmp_echo_hdr));
-    assert(err == ERR_OK);
-
-    hdr->chksum = inet_chksum_pbuf(p);
-
-    err = raw_sendto(socket->pcb, p, ipaddr);
+    err_t err = raw_sendto(socket->pcb, p, ipaddr);
     socket->seqno = seqno;
     socket->ttl = 0;
     socket->begin = clock();
     socket->end = 0;    
     pbuf_free(p);
-    return socket_check_ret(err);
+    return socket_lwip_check_ret(err);
 }
 
 static u8_t ping_socket_recv(void *arg, struct raw_pcb *pcb, struct pbuf *p, const ip_addr_t *ipaddr) {
     ping_socket_t *socket = arg;
     
-    struct ip_hdr *ip_hdr = p->payload;
-    struct icmp_echo_hdr hdr;
-    u16_t hdr_len = pbuf_copy_partial(p, &hdr, sizeof(hdr), IPH_HL_BYTES(ip_hdr));
-    if ((hdr_len < sizeof(hdr)) || (hdr.id != PING_ID) || (lwip_ntohs(IPH_OFFSET(ip_hdr)) & IP_MF)) {
-        return 0;
+    u16_t seqno;
+    u8_t ttl;
+    if (IP_IS_V6(ipaddr)) {
+        struct ip6_hdr *ip_hdr = p->payload;
+        struct icmp6_echo_hdr hdr;
+        u16_t hdr_len = pbuf_copy_partial(p, &hdr, sizeof(hdr), IP6_HLEN);
+        if ((hdr_len < sizeof(hdr)) || (hdr.id != PING_ID) || (hdr.type != ICMP6_TYPE_EREP)) {
+            return 0;
+        }
+        seqno = lwip_ntohs(hdr.seqno);
+        ttl = IP6H_HOPLIM(ip_hdr);
     }
-    if (socket->seqno == lwip_ntohs(hdr.seqno)) {
+    else {
+        struct ip_hdr *ip_hdr = p->payload;
+        struct icmp_echo_hdr hdr;
+        u16_t hdr_len = pbuf_copy_partial(p, &hdr, sizeof(hdr), IPH_HL_BYTES(ip_hdr));
+        if ((hdr_len < sizeof(hdr)) || (hdr.id != PING_ID) || (hdr.type != ICMP_ER) || (lwip_ntohs(IPH_OFFSET(ip_hdr)) & IP_MF)) {
+            return 0;
+        }
+        seqno = lwip_ntohs(hdr.seqno);
+        ttl = IPH_TTL(ip_hdr);
+    }
+    if (socket->seqno == seqno) {
         ip_addr_set(&socket->ipaddr, ipaddr);
-        socket->ttl = IPH_TTL(ip_hdr);
+        socket->ttl = ttl;
         socket->end = clock();
         xTaskNotifyGive(socket->task);
     }
@@ -134,7 +161,15 @@ static int ping_send(ping_socket_t *socket, const void *buf, size_t len, const i
     }
 
     TickType_t xTicksToWait = pdMS_TO_TICKS(timeout_ms);
-    while (poll_wait(&xTicksToWait) >= 0) {
+    for (;;) {
+        ret = poll_wait(&xTicksToWait);
+        if (ret < 0) {
+            return -1;
+        }        
+        if (ret == 0) {
+            errno = ETIMEDOUT;
+            return -1;
+        }
         LOCK_TCPIP_CORE();
         bool done = socket->end;
         UNLOCK_TCPIP_CORE();
@@ -142,18 +177,12 @@ static int ping_send(ping_socket_t *socket, const void *buf, size_t len, const i
             return 0;
         }
     }
-    return -1;
 }
 
 int ping(const ip_addr_t *ipaddr) {
-    if (IP_IS_V6(ipaddr)) {
-        errno = EAFNOSUPPORT;
-        return -1;
-    }
-
     ping_socket_t socket;
     LOCK_TCPIP_CORE();
-    int ret = ping_socket_init(&socket, PING_TTL);
+    int ret = ping_socket_init(&socket, ipaddr, PING_TTL);
     UNLOCK_TCPIP_CORE();
     if (ret < 0) {
         return ret;
@@ -168,8 +197,8 @@ int ping(const ip_addr_t *ipaddr) {
     while (remaining > 0) {
         ret = ping_send(&socket, payload, PING_PAYLOAD_LEN, ipaddr, PING_RX_TIMEOUT);
         if (ret >= 0) {
-            char addr_str[IP4ADDR_STRLEN_MAX];
-            ipaddr_ntoa_r(&socket.ipaddr, addr_str, IP4ADDR_STRLEN_MAX);
+            char addr_str[IP6ADDR_STRLEN_MAX];
+            ipaddr_ntoa_r(&socket.ipaddr, addr_str, IP6ADDR_STRLEN_MAX);
             int time = (socket.end - socket.begin) * 1000 / CLOCKS_PER_SEC;
             printf("Reply from %s: bytes=%u time=%dms TTL=%hhu\n", addr_str, PING_PAYLOAD_LEN, time, socket.ttl);
             struct timespec sleep = { .tv_sec = PING_INTERVAL / 1000, .tv_nsec = (PING_INTERVAL % 1000) * 1000000 };
@@ -177,8 +206,9 @@ int ping(const ip_addr_t *ipaddr) {
                 break;
             }
         }
-        else if (errno == EAGAIN) {
+        else if (errno == ETIMEDOUT) {
             puts("Request timed out.");
+            ret = 0;
         }
         else {
             break;

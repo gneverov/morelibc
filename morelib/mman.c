@@ -20,11 +20,11 @@ void *vfs_mmap(void *addr, size_t len, int prot, int flags, struct vfs_file *fil
 }
 
 void *mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off) {
-    int fd_flags = 0;
-    struct vfs_file *file = vfs_acquire_file(fd, &fd_flags);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
     if (!file) {
         return NULL;
     }
+    int fd_flags = (file->flags + 1) & O_ACCMODE;
     if (!(fd_flags & FREAD)) {
         errno = EACCES;
         return NULL;

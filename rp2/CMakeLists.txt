@@ -12,9 +12,11 @@ target_sources(morelib_rp2 INTERFACE
     mtd.c
     pio.c
     pwm.c
+    random.c
     sdcard.c
     spi.c
     term_uart.c
+    time.c
 )
 
 target_include_directories(morelib_rp2 INTERFACE include)

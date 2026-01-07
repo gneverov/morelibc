@@ -32,7 +32,7 @@ void env_init(void) {
     }
 }
 
-__attribute__((destructor, visibility("hidden")))
+// __attribute__((destructor, visibility("hidden")))
 int env_fini(void) {
     if (environ == (char **)flash_env.env) {
         return 0;
@@ -106,7 +106,11 @@ int __wrap_setenv(const char *name, const char *value, int rewrite) {
     if (env_copy() < 0) {
         return -1;
     }
-    return __real_setenv(name, value, rewrite);
+    int ret = __real_setenv(name, value, rewrite);
+    if (ret >= 0)  {
+        env_fini();
+    }
+    return ret;
 }
 
 int __wrap_unsetenv(const char *name) {
@@ -114,5 +118,9 @@ int __wrap_unsetenv(const char *name) {
     if (env_copy() < 0) {
         return -1;
     }
-    return __real_unsetenv(name);
+    int ret = __real_unsetenv(name);
+    if (ret >= 0)  {
+        env_fini();
+    }
+    return ret;    
 }

@@ -21,3 +21,25 @@ unsigned if_nametoindex(const char *ifname) {
     UNLOCK_TCPIP_CORE();
     return ret;
 }
+
+struct if_nameindex *if_nameindex(void) {
+    struct if_nameindex *ret = calloc(16, sizeof(struct if_nameindex));
+    if (!ret) {
+        return NULL;
+    }
+    int i = 0;
+    LOCK_TCPIP_CORE();
+    struct netif *netif = netif_list;
+    while (netif && (i < 15)) {
+        ret[i].if_index = netif_get_index(netif);
+        netif_index_to_name(ret[i].if_index, ret[i].if_name);
+        netif = netif->next;
+        i++;
+    }
+    UNLOCK_TCPIP_CORE();
+    return ret;
+}
+
+void if_freenameindex(struct if_nameindex *ptr) {
+    free(ptr);
+}

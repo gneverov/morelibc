@@ -74,8 +74,7 @@ static void term_mux_notify(const void *ptr, BaseType_t *pxHigherPriorityTaskWok
 }
 
 static int term_mux_add(term_mux_t *file, int fd) {
-    int flags = FREAD | FWRITE;
-    struct poll_file *term_file = poll_file_acquire(fd, &flags);
+    struct poll_file *term_file = poll_file_acquire(fd, FREAD | FWRITE);
     if (!term_file) {
         return -1;
     }
@@ -83,7 +82,7 @@ static int term_mux_add(term_mux_t *file, int fd) {
     if (!term_file->base.func->isatty) {
         errno = ENOTTY;
         goto exit2;
-    }    
+    }
     struct term_mux_waiter **tail = &file->descs;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     while (*tail) {
@@ -169,7 +168,7 @@ static int term_mux_ioctl(void *ctx, unsigned long request, va_list args) {
     return ret;
 }
 
-static int term_mux_read(void *ctx, void *buffer, size_t size, int flags) {
+static int term_mux_read(void *ctx, void *buffer, size_t size) {
     term_mux_t *file = ctx;
     TickType_t xTicksToWait = portMAX_DELAY;
     int ret;
@@ -180,7 +179,8 @@ static int term_mux_read(void *ctx, void *buffer, size_t size, int flags) {
         struct term_mux_waiter *desc = file->descs;
         while (desc) {
             struct term_mux_waiter *next = desc->next;
-            ret = vfs_read(&desc->term_file->base, buffer, size, flags | FNONBLOCK);
+            desc->term_file->base.flags |= O_NONBLOCK;
+            ret = vfs_read(&desc->term_file->base, buffer, size);
             if ((ret > 0) || (ret == size)) {
                 break;
             }
@@ -198,19 +198,20 @@ static int term_mux_read(void *ctx, void *buffer, size_t size, int flags) {
             poll_file_notify(&file->base, 0, POLLIN);
         }
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));
+    while (POLL_CHECK(ret, &file->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
-static int term_mux_write_one(term_mux_t *file, struct term_mux_waiter *desc, const void *buffer, size_t size, int flags) {
-    int ret = vfs_write(&desc->term_file->base, buffer, size, flags);
+static int term_mux_write_one(term_mux_t *file, struct term_mux_waiter *desc, const void *buffer, size_t size) {
+    desc->term_file->base.flags &= ~O_NONBLOCK;
+    int ret = vfs_write(&desc->term_file->base, buffer, size);
     if (ret < 0) {
         term_mux_remove(file, desc);
     }
     return ret;
 }
 
-static int term_mux_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int term_mux_write(void *ctx, const void *buffer, size_t size) {
     term_mux_t *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     // Iterate through terminals until one write succeeds. The amount written to this first 
@@ -221,7 +222,7 @@ static int term_mux_write(void *ctx, const void *buffer, size_t size, int flags)
         desc->remaining = size;
         struct term_mux_waiter *next = desc->next;
         if (desc == file->descs) {
-            int ret = term_mux_write_one(file, desc, buffer, size, flags);
+            int ret = term_mux_write_one(file, desc, buffer, size);
             if (ret >= 0) {
                 size = ret;
                 desc->remaining = 0;
@@ -239,7 +240,7 @@ static int term_mux_write(void *ctx, const void *buffer, size_t size, int flags)
         while (desc) {
             struct term_mux_waiter *next = desc->next;
             if (desc->remaining) {
-                int ret = term_mux_write_one(file, desc, buffer + size - desc->remaining, desc->remaining, flags);
+                int ret = term_mux_write_one(file, desc, buffer + size - desc->remaining, desc->remaining);
                 if (ret >= 0) {
                     desc->remaining -= ret;
                     if (desc->remaining) {
@@ -266,12 +267,12 @@ static const struct vfs_file_vtable term_mux_vtable = {
 };
 
 __attribute__((visibility("hidden")))
-void *term_mux_open(const void *ctx, dev_t dev, mode_t mode) {
+void *term_mux_open(const void *ctx, dev_t dev) {
     term_mux_t *file = calloc(1, sizeof(term_mux_t));
     if (!file) {
         return NULL;
     }
-    poll_file_init(&file->base, &term_mux_vtable, mode | S_IFCHR, 0);
+    poll_file_init(&file->base, &term_mux_vtable, O_RDWR, 0);
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
     termios_init(&file->termios, 0);
     return file;

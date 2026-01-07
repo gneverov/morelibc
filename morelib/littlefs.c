@@ -43,7 +43,6 @@ struct littlefs_file {
     struct vfs_file base;
     struct littlefs_mount *vfs;
     lfs_file_t file;
-    off_t pos;
 };
 
 struct littlefs_dir {
@@ -122,6 +121,10 @@ static struct littlefs_mount *littlefs_init(const char *source, int flags) {
         .prog = littlefs_block_prog,
         .erase = littlefs_block_erase,
         .sync = littlefs_block_sync,
+#ifdef LFS_THREADSAFE
+        .lock = littlefs_block_lock,
+        .unlock = littlefs_block_unlock,
+#endif
         .read_size = 1,
         .prog_size = mtd_info.writesize,
         .block_size = mtd_info.erasesize,
@@ -215,7 +218,7 @@ static void *littlefs_open(void *ctx, const char *path, int flags, mode_t mode) 
     }
 
     struct littlefs_file *file = malloc(sizeof(struct littlefs_file));
-    vfs_file_init(&file->base, &littlefs_file_vtable, (mode & ~S_IFMT) | S_IFREG);
+    vfs_file_init(&file->base, &littlefs_file_vtable, flags);
     file->vfs = vfs;
     if (littlefs_result(lfs_file_open(&vfs->lfs, &file->file, path, lfs_flags)) < 0) {
         free(file);
@@ -227,7 +230,7 @@ static void *littlefs_open(void *ctx, const char *path, int flags, mode_t mode) 
 static void *littlefs_opendir(void *ctx, const char *dirname) {
     struct littlefs_mount *vfs = ctx;
     struct littlefs_dir *dir = malloc(sizeof(struct littlefs_dir));
-    vfs_file_init(&dir->base, &littlefs_dir_vtable, S_IFDIR);
+    vfs_file_init(&dir->base, &littlefs_dir_vtable, O_RDONLY | O_DIRECTORY);
     dir->vfs = vfs;
     if (littlefs_result(lfs_dir_open(&vfs->lfs, &dir->dir, dirname)) < 0) {
         free(dir);
@@ -353,22 +356,25 @@ static off_t littlefs_lseek(void *ctx, off_t offset, int whence) {
     if (result < 0) {
         return -1;
     }
-    return file->pos = result;
+    return result;
 }
 
 static int littlefs_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     struct littlefs_file *file = ctx;
+    lfs_soff_t original = lfs_file_tell(&file->vfs->lfs, &file->file);
     if (littlefs_result(lfs_file_seek(&file->vfs->lfs, &file->file, offset, SEEK_SET)) < 0) {
         return -1;
     }
-    return littlefs_result(lfs_file_read(&file->vfs->lfs, &file->file, buffer, size));
+    int ret = littlefs_result(lfs_file_read(&file->vfs->lfs, &file->file, buffer, size));
+    if (littlefs_result(lfs_file_seek(&file->vfs->lfs, &file->file, original, SEEK_SET)) < 0) {
+        return -1;
+    }
+    return ret;
 }
 
-static int littlefs_read(void *ctx, void *buffer, size_t size, int flags) {
+static int littlefs_read(void *ctx, void *buffer, size_t size) {
     struct littlefs_file *file = ctx;
-    int result = littlefs_pread(file, buffer, size, file->pos);
-    file->pos = lfs_file_tell(&file->vfs->lfs, &file->file);
-    return result;
+    return littlefs_result(lfs_file_read(&file->vfs->lfs, &file->file, buffer, size));
 }
 
 static struct dirent *littlefs_readdir(void *ctx) {
@@ -392,17 +398,20 @@ static void littlefs_rewinddir(void *ctx) {
 
 static int littlefs_pwrite(void *ctx, const void *buffer, size_t size, off_t offset) {
     struct littlefs_file *file = ctx;
+    lfs_soff_t original = lfs_file_tell(&file->vfs->lfs, &file->file);
     if (littlefs_result(lfs_file_seek(&file->vfs->lfs, &file->file, offset, SEEK_SET)) < 0) {
         return -1;
     }
-    return littlefs_result(lfs_file_write(&file->vfs->lfs, &file->file, buffer, size));
+    int ret = littlefs_result(lfs_file_write(&file->vfs->lfs, &file->file, buffer, size));
+    if (littlefs_result(lfs_file_seek(&file->vfs->lfs, &file->file, original, SEEK_SET)) < 0) {
+        return -1;
+    }
+    return ret;
 }
 
-static int littlefs_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int littlefs_write(void *ctx, const void *buffer, size_t size) {
     struct littlefs_file *file = ctx;
-    int result = littlefs_pwrite(file, buffer, size, file->pos);
-    file->pos = lfs_file_tell(&file->vfs->lfs, &file->file);
-    return result;
+    return littlefs_result(lfs_file_write(&file->vfs->lfs, &file->file, buffer, size));
 }
 
 static const struct vfs_file_vtable littlefs_file_vtable = {
@@ -417,6 +426,7 @@ static const struct vfs_file_vtable littlefs_file_vtable = {
 
 static const struct vfs_file_vtable littlefs_dir_vtable = {
     .close = littlefs_closedir,
+    .isdir = 1,
     .readdir = littlefs_readdir,
     .rewinddir = littlefs_rewinddir,
 };

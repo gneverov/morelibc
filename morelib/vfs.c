@@ -18,7 +18,6 @@ static SemaphoreHandle_t vfs_mutex;
 static struct vfs_mount *vfs_table;
 
 static struct vfs_file *vfs_fd_table[VFS_FD_MAX];
-static uint16_t vfs_fd_flags[VFS_FD_MAX];
 
 static char *vfs_cwd;
 
@@ -340,13 +339,13 @@ int umount(const char *path) {
     return ret;
 }
 
-void vfs_file_init(struct vfs_file *file, const struct vfs_file_vtable *func, mode_t mode) {
+void vfs_file_init(struct vfs_file *file, const struct vfs_file_vtable *func, int flags) {
     file->func = func;
     file->ref_count = 1;
-    file->mode = mode;
+    file->flags = flags;
 }
 
-struct vfs_file *vfs_acquire_file(int fd, int *flags) {
+struct vfs_file *vfs_acquire_file(int fd, int flags) {
     if ((uint)fd >= VFS_FD_MAX) {
         errno = EBADF;
         return NULL;
@@ -354,9 +353,9 @@ struct vfs_file *vfs_acquire_file(int fd, int *flags) {
 
     vfs_lock();
     struct vfs_file *file = vfs_fd_table[fd];
-    if (file && ((vfs_fd_flags[fd] & *flags) == *flags)) {
+    int fd_flags = (file->flags & ~O_ACCMODE) | ((file->flags + 1) & O_ACCMODE);
+    if (file && (fd_flags & flags) == flags) {
         file->ref_count++;
-        *flags = vfs_fd_flags[fd];
     } else {
         errno = EBADF;
         file = NULL;
@@ -383,23 +382,6 @@ void vfs_release_file(struct vfs_file *file) {
             free(file);
         }
     }
-}
-
-int vfs_set_flags(int fd, int flags) {
-    if ((uint)fd >= VFS_FD_MAX) {
-        errno = EBADF;
-        return -1;
-    }
-
-    int ret = -1;
-    vfs_lock();
-    if (vfs_fd_table[fd]) {
-        ret = vfs_fd_flags[fd] = (vfs_fd_flags[fd] & O_ACCMODE) | (flags & ~O_ACCMODE);
-    } else {
-        errno = EBADF;
-    }
-    vfs_unlock();
-    return ret;
 }
 
 static int vfs_fd_next(void) {
@@ -436,7 +418,7 @@ exit:
     return ret;
 }
 
-int vfs_replace(int fd, struct vfs_file *file, int flags) {
+int vfs_replace(int fd, struct vfs_file *file) {
     if (fd >= VFS_FD_MAX) {
         errno = EBADF;
         return -1;
@@ -453,7 +435,6 @@ int vfs_replace(int fd, struct vfs_file *file, int flags) {
     file->ref_count++;
     prev_file = vfs_fd_table[fd];
     vfs_fd_table[fd] = file;
-    vfs_fd_flags[fd] = flags;
 exit:
     vfs_unlock();
     if (prev_file) {

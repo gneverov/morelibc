@@ -9,20 +9,21 @@
 int fcntl(int fd, int cmd, ...) {
     va_list args;
     va_start(args, cmd);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
+    if (!file) {
+        return -1;
+    }
+
     int ret = -1;
     switch (cmd) {
         case F_GETFL: {
-            int flags = 0;
-            struct vfs_file *file = vfs_acquire_file(fd, &flags);
-            if (file) {
-                ret = (flags & ~O_ACCMODE) | ((flags - 1) & O_ACCMODE);
-                vfs_release_file(file);
-            }
+            ret = file->flags;
             break;
         }
         case F_SETFL: {
-            int flags = va_arg(args, int);
-            ret = vfs_set_flags(fd, flags & ~O_ACCMODE) >= 0 ? 0 : -1;
+            int new_flags = va_arg(args, int);
+            file->flags = (new_flags & ~O_ACCMODE) | (file->flags & O_ACCMODE);
+            ret = 0;
             break;
         }
         default: {
@@ -31,6 +32,7 @@ int fcntl(int fd, int cmd, ...) {
         }
     }
     va_end(args);
+    vfs_release_file(file);    
     return ret;
 }
 
@@ -41,26 +43,34 @@ int open(const char *path, int flags, ...) {
         return -1;
     }
     struct vfs_file *file = NULL;
-    if (vfs->func->open) {
+    if (vfs->func->open && !(flags & O_DIRECTORY)) {
         va_list va;
         va_start(va, flags);
         mode_t mode = (flags & O_CREAT) ? va_arg(va, mode_t) : 0;
         file = vfs->func->open(vfs, vfs_path.begin, flags, mode);
         va_end(va);
-    } else {
+        if (file || (errno != EISDIR)) {
+            goto end;
+        }
+    } 
+    if (vfs->func->opendir) {
+        file = vfs->func->opendir(vfs, vfs_path.begin);
+    }
+    else {
         errno = ENOSYS;
     }
-    vfs_release_mount(vfs);
 
+    end:
+    vfs_release_mount(vfs);
     int ret = -1;
     if (file) {
         if (file->func->isatty && !(flags & O_NOCTTY)) {
             vfs_settty(file);
-            vfs_replace(0, file, (flags & ~O_ACCMODE) | FREAD);
-            vfs_replace(1, file, (flags & ~O_ACCMODE) | FWRITE);
-            vfs_replace(2, file, (flags & ~O_ACCMODE) | FWRITE);
+            vfs_replace(0, file);
+            vfs_replace(1, file);
+            vfs_replace(2, file);
         }
-        ret = vfs_replace(-1, file, (flags & ~O_ACCMODE) | ((flags + 1) & O_ACCMODE));
+        ret = vfs_replace(-1, file);
         vfs_release_file(file);
     }
     return ret;

@@ -21,6 +21,7 @@
 #define IPPROTO_UDPLITE 136
 #define IPPROTO_RAW 255                 // Raw IP Packets Protocol.
 
+typedef uint16_t in_port_t;
 
 #if LWIP_IPV4
 struct sockaddr_in {

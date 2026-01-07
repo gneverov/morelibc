@@ -8,7 +8,7 @@ Morelibc seeks to augment Picolibc with more functionality from the standard C/P
 | - | - | - |
 | `alphasort` | 🔴 | |
 | `closedir` | 🟢 | |
-| `dirfd` | 🔴 | |
+| `dirfd` | 🟢 | |
 | `fdopendir` | 🟢 | |
 | `opendir` | 🟢 | |
 | `readdir` | 🟢 | |
@@ -63,7 +63,7 @@ Morelibc seeks to augment Picolibc with more functionality from the standard C/P
 | Function | Status | Notes |
 | - | - | - |
 | `pselect` | 🔴 | No signal mask. |
-| `select` | 🔴 | |
+| `select` | 🟢 | |
 
 ## sys/socket.h
 See [list](./socket.md) of socket-related functions.
@@ -76,7 +76,7 @@ See [list](./socket.md) of socket-related functions.
 | `fchmodat` | 🔴 | |
 | `fstat` | 🟢 | |
 | `fstatat` | 🔴 | |
-| `futimens` | 🔴 | |
+| `futimens` | 🟢 | |
 | `lstat` | 🔴 | No symbolic links. |
 | `mkdir` | 🟢 | |
 | `mkdirat` | 🔴 | |
@@ -86,7 +86,7 @@ See [list](./socket.md) of socket-related functions.
 | `mknodat` | 🔴 | |
 | `stat` | 🟢 | |
 | `umask` | 🔴 | |
-| `utimensat` | 🔴 | |
+| `utimensat` | 🟢 | Only at current working directory. |
 
 ## sys/statvfs.h
 | Function | Status | Notes |
@@ -94,12 +94,6 @@ See [list](./socket.md) of socket-related functions.
 | `fstatvfs` | 🟢 | |
 | `statvfs` | 🟢 | |
 
-## sys/time.h
-| Function | Status | Notes |
-| - | - | - |
-| `gettimeofday` | 🟢 | Implemented by port. Obsolete. |
-| `settimeofday` | 🟢 | Implemented by port. Not POSIX. |
-| `utimes` | 🔴 | |
 
 ## sys/times.h
 | Function | Status | Notes |
@@ -133,10 +127,10 @@ See [list](./socket.md) of socket-related functions.
 | - | - | - |
 | `asctime` | 🟢 | Implemented by Picolibc. Obsolete. |
 | `clock` | 🟢 | Implemented by Picolibc. |
-| `clock_getres` | 🔴 | |
-| `clock_gettime` | 🔴 | |
-| `clock_nanosleep` | 🔴 | |
-| `clock_settime` | 🔴 | |
+| `clock_getres` | 🟢 | Implemented by port. |
+| `clock_gettime` | 🟢 | Implemented by port. |
+| `clock_nanosleep` | 🟢 | Implemented by port. |
+| `clock_settime` | 🟢 | Implemented by port. |
 | `ctime` | 🟢 | Implemented by Picolibc. Obsolete. |
 | `difftime` | 🟢 | Implemented by Picolibc. |
 | `getdate` | 🔴 | | 
@@ -155,7 +149,7 @@ See [list](./socket.md) of socket-related functions.
 | `timer_getoverrun` | 🔴 | |
 | `timer_gettime` | 🔴 | |
 | `timer_settime` | 🔴 | |
-| `timespec_get` | 🔴 | |
+| `timespec_get` | 🟢 | |
 | `tzset` | 🟢 | Implemented by Picolibc. |
 
 ## unistd.h

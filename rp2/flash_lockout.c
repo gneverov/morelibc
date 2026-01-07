@@ -60,6 +60,7 @@ void flash_lockout_end(void) {
 }
 
 static void __isr __not_in_flash_func(flash_lockout_handler)(void) {
+    portASSERT_IF_INTERRUPT_PRIORITY_INVALID();
     UBaseType_t ulState = portSET_INTERRUPT_MASK();
     ++flash_lockout_state;
     __sev();

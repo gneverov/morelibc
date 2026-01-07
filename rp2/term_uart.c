@@ -130,7 +130,8 @@ static int term_uart_close(void *ctx) {
 
 static int term_uart_fstat(void *ctx, struct stat *pstat) {
     term_uart_t *file = ctx;
-    pstat->st_rdev = makedev(major(DEV_TTYS0), uart_get_index(file->uart));
+    pstat->st_mode = S_IFCHR;
+    pstat->st_rdev = DEV_TTYS0 | uart_get_index(file->uart);
     return 0;
 }
 
@@ -172,7 +173,7 @@ static int term_uart_ioctl(void *ctx, unsigned long request, va_list args) {
     return ret;
 }
 
-static int term_uart_read(void *ctx, void *buffer, size_t size, int flags) {
+static int term_uart_read(void *ctx, void *buffer, size_t size) {
     term_uart_t *file = ctx;
     TickType_t xTicksToWait = portMAX_DELAY;
     int ret;
@@ -188,11 +189,11 @@ static int term_uart_read(void *ctx, void *buffer, size_t size, int flags) {
             ret = -1;
         }
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));
+    while (POLL_CHECK(ret, &file->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
-static int term_uart_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int term_uart_write(void *ctx, const void *buffer, size_t size) {
     term_uart_t *file = ctx;
     TickType_t xTicksToWait = portMAX_DELAY;
     int ret;
@@ -207,7 +208,7 @@ static int term_uart_write(void *ctx, const void *buffer, size_t size, int flags
             ret = -1;
         }
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLOUT, &xTicksToWait));
+    while (POLL_CHECK(ret, &file->base, POLLOUT, &xTicksToWait));
     return ret;
 }
 
@@ -221,8 +222,8 @@ static const struct vfs_file_vtable term_uart_vtable = {
     .write = term_uart_write,
 };
 
-static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, uint rx_pin, uint baudrate, mode_t mode) {
-    poll_file_init(&file->base, &term_uart_vtable, mode | S_IFCHR, 0);
+static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, uint rx_pin, uint baudrate) {
+    poll_file_init(&file->base, &term_uart_vtable, O_RDWR, 0);
     uart_inst_t *uart = UART_INSTANCE(uart_num);
     file->tx_pin = tx_pin;
     file->rx_pin = rx_pin;
@@ -249,7 +250,7 @@ static int term_uart_file_init(term_uart_t *file, uint uart_num, uint tx_pin, ui
     return 0;
 }
 
-void *term_uart_open(const void *ctx, dev_t dev, mode_t mode) {
+void *term_uart_open(const void *ctx, dev_t dev, int flags) {
     uint uart_num = minor(dev - DEV_TTYS0);
     if (uart_num >= NUM_UARTS) {
         errno = ENODEV;
@@ -269,7 +270,7 @@ void *term_uart_open(const void *ctx, dev_t dev, mode_t mode) {
     if (!file) {
         goto exit;
     }
-    if (term_uart_file_init(file, uart_num, tx_pin, rx_pin, baudrate, mode) < 0) {
+    if (term_uart_file_init(file, uart_num, tx_pin, rx_pin, baudrate) < 0) {
         term_uart_file_deinit(file);
         free(file);
     }

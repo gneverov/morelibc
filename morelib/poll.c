@@ -18,12 +18,8 @@ int poll_wait(TickType_t *pxTicksToWait) {
     }
     uint32_t ret = ulTaskNotifyTake(pdTRUE, *pxTicksToWait);
     thread_disable_interrupt();
-    BaseType_t timeOut = xTaskCheckForTimeOut(&xTimeOut, pxTicksToWait);
+    xTaskCheckForTimeOut(&xTimeOut, pxTicksToWait);
     if (thread_check_interrupted()) {
-        return -1;
-    }
-    if (timeOut) {
-        errno = EAGAIN;
         return -1;
     }
     return ret;    
@@ -60,14 +56,22 @@ void poll_waiter_remove(struct poll_file *file, struct poll_waiter *desc) {
     taskEXIT_CRITICAL();
 }
 
-void poll_file_init(struct poll_file *file, const struct vfs_file_vtable *func, mode_t mode, uint events) {
+void poll_waiter_modify(struct poll_file *file, struct poll_waiter *desc) {
+    taskENTER_CRITICAL();
+    if (desc->events & file->events) {
+        desc->notify(desc, NULL);
+    }
+    taskEXIT_CRITICAL();
+}
+
+void poll_file_init(struct poll_file *file, const struct vfs_file_vtable *func, int flags, uint events) {
     assert(func->pollable);
-    vfs_file_init(&file->base, func, mode);
+    vfs_file_init(&file->base, func, flags);
     file->waiters = NULL;
     file->events = events;
 }
 
-struct poll_file *poll_file_acquire(int fd, int *flags) {
+struct poll_file *poll_file_acquire(int fd, int flags) {
     struct vfs_file *file = vfs_acquire_file(fd, flags);
     if (!file) {
         return NULL;
@@ -145,6 +149,10 @@ int poll_file_wait(struct poll_file *file, uint events, TickType_t *pxTicksToWai
     poll_waiter_add(file, &desc.base);
 
     int ret = poll_wait(pxTicksToWait);
+    if (ret == 0) {
+        errno = ETIMEDOUT;
+        ret = -1;
+    }
 
     poll_waiter_remove(file, &desc.base);
     return ret;
@@ -165,8 +173,7 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout) {
         if (fds[i].fd < 0) {
             continue;
         }
-        int flags = 0;
-        struct vfs_file *file = vfs_acquire_file(fds[i].fd, &flags);
+        struct vfs_file *file = vfs_acquire_file(fds[i].fd, 0);
         if (!file) {
             fds[i].revents = POLLNVAL;
             continue;
@@ -199,11 +206,64 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout) {
     }
     free(descs);
 
-    if ((ret < 0) && (errcode != EAGAIN)) {
+    if (ret < 0) {
         errno = errcode;
         return ret;
     }
     else {
         return num_fds;
     }
+}
+
+
+#include <sys/select.h>
+
+static int select_set_fds(fd_set *set, const struct pollfd *fds, size_t numfds, uint event) {
+    if (set) {
+        FD_ZERO(set);
+    }
+    int ret = 0;
+    for (int i = 0; i < numfds; i++) {
+        if (fds[i].revents & event) {
+            if (set) {
+                FD_SET(fds[i].fd, set);
+            }
+            ret++;
+        }
+    }
+    return ret;
+}
+
+int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *errorfds, struct timeval *timeout) {
+    struct pollfd fds[nfds];
+    int j = 0;
+    for (int i = 0; i < nfds; i++) {
+        fds[j].fd = i;
+        fds[j].events = 0;
+        if (readfds && FD_ISSET(i, readfds)) {
+            fds[j].events |= POLLIN;
+        }
+        if (writefds && FD_ISSET(i, writefds)) {
+            fds[j].events |= POLLOUT;
+        }
+        if (errorfds && FD_ISSET(i, errorfds)) {
+            fds[j].events |= POLLERR;
+        }
+        if (fds[j].events) {
+            j++;
+        }
+    }
+    int timeout_ms = timeout ? (timeout->tv_sec * 1000 + timeout->tv_usec / 1000) : -1;
+    int ret =  poll(fds, j, timeout_ms);
+    if (ret >= 0) {
+        if (select_set_fds(NULL, fds, j, POLLNVAL)) {
+            errno = EBADF;
+            ret = -1;
+        } else {
+            select_set_fds(readfds, fds, j, POLLIN);
+            select_set_fds(writefds, fds, j, POLLOUT);
+            select_set_fds(errorfds, fds, j, POLLERR);
+        }
+    }
+    return ret;
 }

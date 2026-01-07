@@ -4,8 +4,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <malloc.h>
+#include <stdio.h>
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 #include "morelib/ioctl.h"
 #include "morelib/mtd.h"
@@ -33,6 +35,9 @@ static void *mtdblk_put_page(struct mtdblk_file *file, size_t cache_index) {
     assert(cache_index < MTDBLK_NUM_CACHE_ENTRIES);
     struct mtdblk_cache_entry *entry = &file->cache[cache_index];
     assert(entry->page);
+    #ifndef NDEBUG
+    // printf("mtdblk%d wrote page %u\n", file->index, file->cache[cache_index].num);
+    #endif
     struct erase_info erase_info = {
         entry->num * file->block_size,
         file->block_size,
@@ -154,7 +159,8 @@ static int mtdblk_fsync(void *ctx) {
 static int mtdblk_fstat(void *ctx, struct stat *pstat) {
     struct mtdblk_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
-    pstat->st_rdev = makedev(major(DEV_MTDBLK0), file->index);
+    pstat->st_mode = S_IFBLK;
+    pstat->st_rdev = DEV_MTDBLK0 | file->index;
     pstat->st_mtim = file->mtime;
     xSemaphoreGive(file->mutex);
     return 0;
@@ -298,7 +304,7 @@ static int mtdblk_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     return ret;
 }
 
-static int mtdblk_read(void *ctx, void *buffer, size_t size, int flags) {
+static int mtdblk_read(void *ctx, void *buffer, size_t size) {
     struct mtdblk_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     off_t offset = file->pos;
@@ -318,10 +324,7 @@ static int mtdblk_rwrite(struct mtdblk_file *file, const void *buffer, size_t si
         return -1;
     }
 
-    struct timeval t;
-    gettimeofday(&t, NULL);
-    file->mtime.tv_sec = t.tv_sec;
-    file->mtime.tv_nsec = t.tv_usec * 1000;
+    clock_gettime(CLOCK_REALTIME, &file->mtime);
 
     size_t remaining = size;
     while (remaining > 0) {
@@ -362,7 +365,7 @@ static int mtdblk_pwrite(void *ctx, const void *buffer, size_t size, off_t offse
     return ret;
 }
 
-static int mtdblk_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int mtdblk_write(void *ctx, const void *buffer, size_t size) {
     struct mtdblk_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     off_t offset = file->pos;
@@ -385,13 +388,13 @@ static const struct vfs_file_vtable mtdblk_vtable = {
     .write = mtdblk_write,
 };
 
-static int mtdblk_file_init(struct mtdblk_file *file, int index, mode_t mode, dev_t device) {
-    vfs_file_init(&file->base, &mtdblk_vtable, mode | S_IFBLK);
+static int mtdblk_file_init(struct mtdblk_file *file, int index, dev_t device) {
+    vfs_file_init(&file->base, &mtdblk_vtable, O_RDWR);
     file->index = index;
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
 
-    dev_t mtd_device = makedev(major(DEV_MTD0), minor(device));
-    file->file = opendev(mtd_device, mode);
+    dev_t mtd_device = DEV_MTD0 | minor(device);
+    file->file = opendev(mtd_device, O_RDWR);
     if (!file->file) {
         return -1;
     }
@@ -405,7 +408,7 @@ static int mtdblk_file_init(struct mtdblk_file *file, int index, mode_t mode, de
     return 0;
 }
 
-static void *mtdblk_open(const void *ctx, dev_t dev, mode_t mode) {
+static void *mtdblk_open(const void *ctx, dev_t dev, int flags) {
     uint index = minor(dev);
     if (index >= MTDBLK_NUM_DEVICES) {
         errno = ENODEV;
@@ -421,7 +424,7 @@ static void *mtdblk_open(const void *ctx, dev_t dev, mode_t mode) {
     if (!file) {
         goto exit;
     }
-    if (mtdblk_file_init(file, index, mode, dev) < 0) {
+    if (mtdblk_file_init(file, index, dev) < 0) {
         mtdblk_file_deinit(file);
         free(file);
         file = NULL;

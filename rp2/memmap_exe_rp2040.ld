@@ -75,21 +75,23 @@ SECTIONS
         KEEP (*(.fini .fini.*))
 
         /* preinit data */
-        . = ALIGN(4);        
+        . = ALIGN(4);
+        PROVIDE_HIDDEN (__bothinit_array_start = .);
         PROVIDE_HIDDEN (__preinit_array_start = .);
 		KEEP (*(SORT_BY_NAME(.preinit_array.*)))
 		KEEP (*(.preinit_array))
         PROVIDE_HIDDEN (__preinit_array_end = .);
 
         /* init data */
-        . = ALIGN(4);        
+        . = ALIGN(4);
         PROVIDE_HIDDEN (__init_array_start = .);
 		KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
 		KEEP (*(.init_array .ctors))
         PROVIDE_HIDDEN (__init_array_end = .);
+        PROVIDE_HIDDEN (__bothinit_array_end = .);
 
         /* fini data */
-        . = ALIGN(4);        
+        . = ALIGN(4);
         PROVIDE_HIDDEN (__fini_array_start = .);
 		KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
 		KEEP (*(.fini_array .dtors))
@@ -170,6 +172,8 @@ SECTIONS
 		HIDDEN( __tbss_end = . );
 	} > RAM
 
+    PROVIDE_HIDDEN( __tdata_size = SIZEOF(.tdata) );
+    PROVIDE_HIDDEN( __tbss_size = SIZEOF(.tbss) );
 	PROVIDE_HIDDEN( __tbss_offset = ADDR(.tbss) - ADDR(.tdata) );
 	PROVIDE_HIDDEN( __tls_size = __tls_end - __tls_base );
 	PROVIDE_HIDDEN( __tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss)) );

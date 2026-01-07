@@ -41,8 +41,7 @@ struct epoll_file {
 static const struct vfs_file_vtable epoll_file_vtable;
 
 static struct epoll_file *epoll_fdopen(int fd) {
-    int flags = 0;
-    struct epoll_file *ep_file = (void *)vfs_acquire_file(fd, &flags);
+    struct epoll_file *ep_file = (void *)vfs_acquire_file(fd, 0);
     if (ep_file && (ep_file->base.base.func != &epoll_file_vtable)) {
         poll_file_release(&ep_file->base);
         ep_file = NULL;
@@ -173,7 +172,7 @@ int epoll_create(int size) {
         goto exit;
     }
     ep_file->num_descs = size;
-    fd = poll_file_fd(&ep_file->base, FREAD | FWRITE);
+    fd = poll_file_fd(&ep_file->base, O_RDWR);
 
 exit:
     poll_file_release(&ep_file->base);

@@ -3,63 +3,44 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <morelib/vfs.h>
 
 
 int closedir(DIR *dirp) {
-    struct vfs_file *file = dirp;
-    if (!file) {
-        return -1;
-    }
-    if (S_ISDIR(file->mode)) {
-        vfs_release_file(file);
-        return 0;
+    return close((int)dirp);
+}
 
-    } else {
-        errno = ENOTDIR;
-        return -1;
-    }
+int dirfd(DIR *dirp) {
+    return (int)dirp;
 }
 
 DIR *fdopendir(int fd) {
-    int flags = 0;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
     if (!file) {
         return NULL;
     }
-    if (S_ISDIR(file->mode)) {
-        return (DIR *)file;
-    } else {
-        vfs_release_file(file);
+    if (!file->func->isdir) {
         errno = ENOTDIR;
-        return NULL;
+        fd = -1;
     }
+    vfs_release_file(file);
+    return (fd >= 0) ? (DIR *)fd : NULL;
 }
 
 DIR *opendir(const char *dirname) {
-    vfs_path_buffer_t vfs_dirname;
-    struct vfs_mount *vfs = vfs_acquire_mount(dirname, &vfs_dirname);
-    if (!vfs) {
-        return NULL;
-    }
-    struct vfs_file *file = NULL;
-    if (vfs->func->opendir) {
-        file = vfs->func->opendir(vfs, vfs_dirname.begin);
-    } else {
-        errno = ENOSYS;
-    }
-    vfs_release_mount(vfs);
-
-    return file;
+    int fd = open(dirname, O_RDONLY | O_DIRECTORY);
+    return (fd >= 0) ? (DIR *)fd : NULL;
 }
 
 struct dirent *readdir(DIR *dirp) {
-    struct vfs_file *file = dirp;
+    struct vfs_file *file = vfs_acquire_file((int)dirp, 0);
     if (!file) {
         return NULL;
     }
     struct dirent *ret = NULL;
-    if (!S_ISDIR(file->mode)) {
+    if (!file->func->isdir) {
         errno = ENOTDIR;
     } else if (file->func->readdir) {
         ret = file->func->readdir(file);
@@ -70,15 +51,15 @@ struct dirent *readdir(DIR *dirp) {
 }
 
 void rewinddir(DIR *dirp) {
-    struct vfs_file *file = dirp;
+    struct vfs_file *file = vfs_acquire_file((int)dirp, 0);
     if (!file) {
         return;
     }
-    if (!S_ISDIR(file->mode)) {
+    if (!file->func->isdir) {
         errno = ENOTDIR;
     }
-    if (file->func->rewinddir) {
-        file->func->rewinddir(dirp);
+    else if (file->func->rewinddir) {
+        file->func->rewinddir(file);
     } else {
         errno = ENOSYS;
     }

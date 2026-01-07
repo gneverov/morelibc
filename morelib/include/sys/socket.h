@@ -96,4 +96,4 @@ int setsockopt(int fd, int level, int option_name, const void *option_value, soc
 int shutdown(int fd, int how);
 // int sockatmark(int);
 int socket(int domain, int type, int protocol);
-// int socketpair(int, int, int, int [2]);
+int socketpair(int domain, int type, int protocol, int socket_vector[2]);

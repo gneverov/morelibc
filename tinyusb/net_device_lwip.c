@@ -97,7 +97,7 @@ static err_t tud_network_lwip_output(struct netif *netif, struct pbuf *p) {
 static err_t tud_network_lwip_netif_init(struct netif *netif) {
     LWIP_ASSERT("netif != NULL", (netif != NULL));
     netif->mtu = CFG_TUD_NET_MTU;
-    netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_UP | NETIF_FLAG_IGMP;
+    netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP | NETIF_FLAG_UP | NETIF_FLAG_IGMP | NETIF_FLAG_MLD6;
     netif->state = NULL;
     netif->name[0] = 's';
     netif->name[1] = 'l';

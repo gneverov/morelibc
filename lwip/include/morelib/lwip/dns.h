@@ -3,15 +3,15 @@
 
 #pragma once
 
-#include "./socket.h"
+#include "morelib/lwip/socket.h"
 
 
 struct socket_dns_arg {
-    struct socket *socket;
+    struct socket_lwip *socket;
     ip_addr_t ipaddr;
     err_t err;
     u8_t addrtype;
     char hostname[];
 };
 
-int socket_dns(void);
+struct socket *socket_dns(void);

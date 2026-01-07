@@ -234,8 +234,8 @@ void mtd_psram_probe(struct mtd_device *device) {
     device->info.type = MTD_RAM;
     device->info.flags = MTD_CAP_RAM;
     device->info.size = psram_size;
-    device->info.erasesize = 1;
-    device->info.writesize = 1;
+    device->info.erasesize = 512;
+    device->info.writesize = 512;
     device->info.oobsize = 0;
     device->mmap_addr = PSRAM_BASE;
     device->rw_addr = PSRAM_BASE;

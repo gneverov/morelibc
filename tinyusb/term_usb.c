@@ -92,7 +92,8 @@ static int term_usb_close(void *ctx) {
 
 static int term_usb_fstat(void *ctx, struct stat *pstat) {
     term_usb_t *file = ctx;
-    pstat->st_rdev = makedev(major(DEV_TTYUSB0), file->usb_itf);
+    pstat->st_mode = S_IFCHR;
+    pstat->st_rdev = DEV_TTYUSB0 | file->usb_itf;
     return 0;
 }
 
@@ -129,7 +130,7 @@ static int term_usb_ioctl(void *ctx, unsigned long request, va_list args) {
     return ret;
 }
 
-static int term_usb_read(void *ctx, void *buffer, size_t size, int flags) {
+static int term_usb_read(void *ctx, void *buffer, size_t size) {
     term_usb_t *file = ctx;
     TickType_t xTicksToWait = portMAX_DELAY;
     int ret;
@@ -143,11 +144,11 @@ static int term_usb_read(void *ctx, void *buffer, size_t size, int flags) {
         }
         xSemaphoreGive(file->mutex);
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));
+    while (POLL_CHECK(ret, &file->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
-static int term_usb_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int term_usb_write(void *ctx, const void *buffer, size_t size) {
     term_usb_t *file = ctx;
     TickType_t xTicksToWait = portMAX_DELAY;
     int ret;
@@ -168,7 +169,7 @@ static int term_usb_write(void *ctx, const void *buffer, size_t size, int flags)
         }
         xSemaphoreGive(file->mutex);
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLOUT, &xTicksToWait));    
+    while (POLL_CHECK(ret, &file->base, POLLOUT, &xTicksToWait));    
     return ret;
 }
 
@@ -182,7 +183,7 @@ static const struct vfs_file_vtable term_usb_vtable = {
     .write = term_usb_write,
 };
 
-static void *term_usb_open(const void *ctx, dev_t dev, mode_t mode) {
+static void *term_usb_open(const void *ctx, dev_t dev, int flags) {
     uint usb_itf = minor(dev);
     if (usb_itf >= CFG_TUD_CDC) {
         errno = ENODEV;
@@ -199,7 +200,7 @@ static void *term_usb_open(const void *ctx, dev_t dev, mode_t mode) {
     if (!file) {
         goto exit;
     }
-    poll_file_init(&file->base, &term_usb_vtable, mode | S_IFCHR, 0);
+    poll_file_init(&file->base, &term_usb_vtable, O_RDWR, 0);
     file->usb_itf = usb_itf;
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
     termios_init(&file->termios, 0);

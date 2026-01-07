@@ -11,10 +11,10 @@
 
 struct if_nameindex {
     unsigned if_index;                  // Numeric index of the interface.
-    char *if_name;                      // Null-terminated name of the interface.
+    char if_name[IF_NAMESIZE];          // Null-terminated name of the interface.
 };
 
-// void if_freenameindex(struct if_nameindex *ptr);
+void if_freenameindex(struct if_nameindex *ptr);
 char *if_indextoname(unsigned ifindex, char *ifname);
-// struct if_nameindex *if_nameindex(void);
+struct if_nameindex *if_nameindex(void);
 unsigned if_nametoindex(const char *ifname);

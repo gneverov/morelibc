@@ -28,7 +28,7 @@ static const struct dev_driver *finddev(dev_t dev) {
     return NULL;
 }
 
-struct vfs_file *opendev(dev_t dev, mode_t mode) {
+struct vfs_file *opendev(dev_t dev, int flags) {
     const struct dev_driver *drv = finddev(dev);
     if (!drv) {
         errno = ENODEV;
@@ -38,7 +38,7 @@ struct vfs_file *opendev(dev_t dev, mode_t mode) {
         errno = ENOSYS;
         return NULL;
     }
-    return drv->open(drv, dev, mode & ~S_IFMT);
+    return drv->open(drv, dev, flags);
 }
 
 int statdev(dev_t dev, struct stat *pstat) {

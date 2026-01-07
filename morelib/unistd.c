@@ -39,12 +39,9 @@ void __attribute__((noreturn, weak)) _exit(int status) {
 static TimerHandle_t alarm_timer;
 
 static void alarm_callback(TimerHandle_t xTimer) {
-    dev_lock();
-    assert(alarm_timer == xTimer);
-    alarm_timer = NULL;
-    dev_unlock();
-    xTimerDelete(xTimer, portMAX_DELAY);
-    raise(SIGALRM);
+    if (pvTimerGetTimerID(xTimer)) {
+        raise(SIGALRM);
+    }
 }
 
 unsigned alarm(unsigned seconds) {
@@ -52,11 +49,14 @@ unsigned alarm(unsigned seconds) {
     unsigned result = 0;
     dev_lock();
     if (alarm_timer) {
+        vTimerSetTimerID(alarm_timer, NULL);
         TickType_t xExpiryTime = xTimerGetExpiryTime(alarm_timer);
-        xTimerChangePeriod(alarm_timer, xTimerPeriod, portMAX_DELAY);
         result = (xExpiryTime - xTaskGetTickCount()) / configTICK_RATE_HZ;
-    } else {
-        alarm_timer = xTimerCreate("alarm", xTimerPeriod, pdFALSE, NULL, alarm_callback);
+        xTimerDelete(alarm_timer, portMAX_DELAY);
+        alarm_timer = NULL;
+    }
+    if (xTimerPeriod) {
+        alarm_timer = xTimerCreate("alarm", xTimerPeriod, pdFALSE, (void *)pdTRUE, alarm_callback);
         xTimerStart(alarm_timer, portMAX_DELAY);
     }
     dev_unlock();
@@ -103,12 +103,11 @@ char *ctermid(char *s) {
 }
 
 int dup(int oldfd) {
-    int flags = 0;
-    struct vfs_file *old_file = vfs_acquire_file(oldfd, &flags);
+    struct vfs_file *old_file = vfs_acquire_file(oldfd, 0);
     if (!old_file) {
         return -1;
     }
-    int ret = vfs_replace(-1, old_file, flags);
+    int ret = vfs_replace(-1, old_file);
     vfs_release_file(old_file);
     return ret;
 }
@@ -118,19 +117,17 @@ int dup2(int oldfd, int newfd) {
         errno = EBADF;
         return -1;
     }
-    int flags = 0;
-    struct vfs_file *old_file = vfs_acquire_file(oldfd, &flags);
+    struct vfs_file *old_file = vfs_acquire_file(oldfd, 0);
     if (!old_file) {
         return -1;
     }
-    int ret = vfs_replace(newfd, old_file, flags);
+    int ret = vfs_replace(newfd, old_file);
     vfs_release_file(old_file);
     return ret;
 }
 
 int fsync(int fd) {
-    int flags = 0;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
     if (!file) {
         return -1;
     }
@@ -140,8 +137,7 @@ int fsync(int fd) {
 }
 
 int ftruncate(int fd, off_t length) {
-    int flags = FWRITE;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, FWRITE);
     if (!file) {
         return -1;
     }
@@ -173,8 +169,7 @@ int getpid(void) {
 }
 
 int isatty(int fd) {
-    int flags = 0;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
     if (!file) {
         return -1;
     }
@@ -184,8 +179,7 @@ int isatty(int fd) {
 }
 
 off_t lseek(int fd, off_t offset, int whence) {
-    int flags = 0;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
     if (!file) {
         return -1;
     }
@@ -195,8 +189,7 @@ off_t lseek(int fd, off_t offset, int whence) {
 }
 
 ssize_t pread(int fd, void *buffer, size_t size, off_t offset) {
-    int flags = FREAD;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, FREAD);
     if (!file) {
         return -1;
     }
@@ -206,8 +199,7 @@ ssize_t pread(int fd, void *buffer, size_t size, off_t offset) {
 }
 
 ssize_t pwrite(int fd, const void *buffer, size_t size, off_t offset) {
-    int flags = FWRITE;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, FWRITE);
     if (!file) {
         return -1;
     }
@@ -217,12 +209,11 @@ ssize_t pwrite(int fd, const void *buffer, size_t size, off_t offset) {
 }
 
 int read(int fd, void *buffer, size_t size) {
-    int flags = FREAD;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, FREAD);
     if (!file) {
         return -1;
     }
-    int ret = vfs_read(file, buffer, size, flags);
+    int ret = vfs_read(file, buffer, size);
     vfs_release_file(file);
     return ret;
 }
@@ -301,12 +292,11 @@ int unlink(const char *file) {
 }
 
 int write(int fd, const void *buffer, size_t size) {
-    int flags = FWRITE;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, FWRITE);
     if (!file) {
         return -1;
     }
-    int ret = vfs_write(file, buffer, size, flags);
+    int ret = vfs_write(file, buffer, size);
     vfs_release_file(file);
     return ret;
 }

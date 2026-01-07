@@ -8,13 +8,13 @@
 
 enum {
     DT_UNKNOWN = 0,
-    DT_FIFO = S_IFIFO,
-    DT_CHR = S_IFCHR,
-    DT_DIR = S_IFDIR,
-    DT_BLK = S_IFBLK,
-    DT_REG = S_IFREG,
-    DT_LNK = S_IFLNK,
-    DT_SOCK = S_IFSOCK,
+    DT_FIFO = (S_IFIFO >> 12),
+    DT_CHR = (S_IFCHR >> 12),
+    DT_DIR = (S_IFDIR >> 12),
+    DT_BLK = (S_IFBLK >> 12),
+    DT_REG = (S_IFREG >> 12),
+    DT_LNK = (S_IFLNK >> 12),
+    DT_SOCK = (S_IFSOCK >> 12),
 };
 
 typedef void DIR;

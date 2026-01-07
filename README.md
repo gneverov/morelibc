@@ -17,6 +17,7 @@ This project also contains a number of optional components for integrating popul
 - [littlefs](https://github.com/littlefs-project/littlefs): driver for littlefs file system
 - [lwIP](https://savannah.nongnu.org/projects/lwip/): socket programming interface
 - [TinyUSB](https://github.com/hathach/tinyusb): drivers for CDC (serial) and MSC (storage) devices (USB device-side only)
+- [Mbed-TLS](https://github.com/Mbed-TLS/mbedtls): sockets with TLS support
 
 ## Building
 To build the [minimal example](/example/):

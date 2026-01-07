@@ -9,22 +9,27 @@ target_sources(morelib_core INTERFACE
     dirent.c
     dlfcn.c
     # epoll.c
+    eventfd.c
     fcntl.c
     flash.c
     flash_env.c
     flash_heap.c
     ioctl.c
     lock.c
+    loop.c
     mem.c
     mman.c
     mtdblk.c
+    netdb.c
     pipe.c
     poll.c
     random.c
     ring.c
     signal.c
+    socket.c
     stat.c
     statvfs.c
+    syslog.c
     term_mux.c
     termios.c
     thread.c
@@ -40,6 +45,11 @@ set_source_files_properties(
     flash_env.c
     flash_heap.c
     PROPERTIES COMPILE_OPTIONS -fvisibility=hidden
+)
+
+target_compile_definitions(morelib_core INTERFACE
+    _DEFAULT_SOURCE
+    _XOPEN_SOURCE
 )
 
 target_link_options(morelib_core INTERFACE

@@ -26,8 +26,8 @@ MEMORY
     FLASH(rx) : ORIGIN = 0x10000000, LENGTH = 16M
     PSRAM(rwx) : ORIGIN = 0x11000000, LENGTH = 16M
     RAM(rwx) : ORIGIN =  0x20000000, LENGTH = 512k
-    SCRATCH_X(rwx) : ORIGIN = 0x20040000, LENGTH = 4k
-    SCRATCH_Y(rwx) : ORIGIN = 0x20041000, LENGTH = 4k
+    SCRATCH_X(rwx) : ORIGIN = 0x20080000, LENGTH = 4k
+    SCRATCH_Y(rwx) : ORIGIN = 0x20081000, LENGTH = 4k
 }
 
 ENTRY(_entry_point)
@@ -65,21 +65,23 @@ SECTIONS
         KEEP (*(.fini .fini.*))
 
         /* preinit data */
-        . = ALIGN(4);        
+        . = ALIGN(4);
+        PROVIDE_HIDDEN (__bothinit_array_start = .);
         PROVIDE_HIDDEN (__preinit_array_start = .);
 		KEEP (*(SORT_BY_NAME(.preinit_array.*)))
 		KEEP (*(.preinit_array))
         PROVIDE_HIDDEN (__preinit_array_end = .);
 
         /* init data */
-        . = ALIGN(4);        
+        . = ALIGN(4);
         PROVIDE_HIDDEN (__init_array_start = .);
 		KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
 		KEEP (*(.init_array .ctors))
         PROVIDE_HIDDEN (__init_array_end = .);
+        PROVIDE_HIDDEN (__bothinit_array_end = .);
 
         /* fini data */
-        . = ALIGN(4);        
+        . = ALIGN(4);
         PROVIDE_HIDDEN (__fini_array_start = .);
 		KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
 		KEEP (*(.fini_array .dtors))
@@ -181,6 +183,8 @@ SECTIONS
 		HIDDEN( __tbss_end = . );
 	} > RAM
 
+    PROVIDE_HIDDEN( __tdata_size = SIZEOF(.tdata) );
+    PROVIDE_HIDDEN( __tbss_size = SIZEOF(.tbss) );
 	PROVIDE_HIDDEN( __tbss_offset = ADDR(.tbss) - ADDR(.tdata) );
 	PROVIDE_HIDDEN( __tls_size = __tls_end - __tls_base );
 	PROVIDE_HIDDEN( __tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss)) );

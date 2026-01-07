@@ -10,6 +10,7 @@ target_sources(morelib_freertos INTERFACE
     heap_malloc.c
     interrupts.c
     port_hooks.c
+    timers.c
 )
 
 target_include_directories(morelib_freertos INTERFACE

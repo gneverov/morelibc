@@ -22,7 +22,7 @@ List of socket-related functions implemented by Morelibc.
 | `shutdown` | 🟢 | |
 | `sockatmark` | 🔴 | |
 | `socket` | 🟢 | |
-| `socketpair` | 🔴 | |
+| `socketpair` | 🟢 | |
 
 ### Socket options
 | Option | Status | Notes |
@@ -54,10 +54,10 @@ List of socket-related functions implemented by Morelibc.
 | `endprotoent` | 🔴 | |
 | `endservent` | 🔴 | |
 | `freeaddrinfo` | 🟢 | |
-| `gai_strerror` | 🔴 | |
+| `gai_strerror` | 🟢 | |
 | `getaddrinfo` | 🟢 | |
 | `gethostent` | 🔴 | |
-| `getnameinfo` | 🔴 | |
+| `getnameinfo` | 🟢 | |
 | `getnetbyaddr` | 🔴 | |
 | `getnetbyname` | 🔴 | |
 | `getnetent` | 🔴 | |
@@ -87,7 +87,7 @@ List of socket-related functions implemented by Morelibc.
 ## net/if.h
 | Function | Status | Notes |
 | - | - | - |
-| `if_freenameindex` | 🔴 | |
+| `if_freenameindex` | 🟢 | |
 | `if_indextoname` | 🟢 | |
-| `if_nameindex` | 🔴 | |
+| `if_nameindex` | 🟢 | |
 | `if_nametoindex` | 🟢 | |

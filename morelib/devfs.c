@@ -49,39 +49,41 @@ static const struct devfs_entry *devfs_lookup(void *ctx, const char *path) {
             return entry;
         }
     }
-    errno = ENOENT;
     return NULL;
 }
 
 static void *devfs_open(void *ctx, const char *path, int flags, mode_t mode) {
     const struct devfs_entry *entry = devfs_lookup(ctx, path);
     if (!entry) {
+        errno = (flags & O_CREAT) ? EROFS : ENOENT;
+        return NULL;
+    }
+    if (flags & O_EXCL) {
+        errno = EEXIST;
         return NULL;
     }
     if (S_ISDIR(entry->mode)) {
         errno = EISDIR;
         return NULL;
     }
-    return opendev(entry->dev, entry->mode);
+    return opendev(entry->dev, flags);
 }
 
 static void *devfs_opendir(void *ctx, const char *dirname) {
     const struct devfs_entry *entry = devfs_lookup(ctx, dirname);
     if (!entry) {
+        errno = ENOENT;
         return NULL;
     }
     if (!S_ISDIR(entry->mode)) {
         errno = ENOTDIR;
         return NULL;
     }
-    if (entry->dev) {
-        return opendev(entry->dev, entry->mode);
-    }
     struct devfs_dir *dir = malloc(sizeof(struct devfs_dir));
     if (!dir) {
         return NULL;
     }
-    vfs_file_init(&dir->base, &devfs_dir_vtable, entry->mode);
+    vfs_file_init(&dir->base, &devfs_dir_vtable, O_RDONLY | O_DIRECTORY);
     dir->entry = entry;
     dir->index = 0;
     return dir;
@@ -130,7 +132,7 @@ static struct dirent *devfs_readdir(void *ctx) {
         char *next = vfs_compare_path(dir->entry->path, entry->path);
         if ((next != NULL) && (strlen(next) > 1) && (strchr(next + 1, '/') == NULL)) {
             dir->dirent.d_ino = 0;
-            dir->dirent.d_type = entry->mode & S_IFMT;
+            dir->dirent.d_type = (entry->mode & S_IFMT) >> 12;
             dir->dirent.d_name = (next + 1);
             return &dir->dirent;
         }
@@ -145,6 +147,7 @@ static void devfs_rewinddir(void *ctx) {
 
 static const struct vfs_file_vtable devfs_dir_vtable = {
     .close = devfs_closedir,
+    .isdir = 1,
     .readdir = devfs_readdir,
     .rewinddir = devfs_rewinddir,
 };

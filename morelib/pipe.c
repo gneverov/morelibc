@@ -5,7 +5,7 @@
 #include <fcntl.h>
 #include <malloc.h>
 #include <unistd.h>
-#include "morelib/poll.h"
+#include "morelib/pipe.h"
 #include "morelib/ring.h"
 
 #include "FreeRTOS.h"
@@ -50,7 +50,7 @@ static int pipe_close(void *ctx) {
 }
 
 
-static int pipe_read(void *ctx, void *buffer, size_t size, int flags) {
+static int pipe_read(void *ctx, void *buffer, size_t size) {
     struct pipe_file *file = ctx;
     struct pipe *pipe = file->pipe;
     ring_t *ring = &pipe->ring;
@@ -73,11 +73,11 @@ static int pipe_read(void *ctx, void *buffer, size_t size, int flags) {
         }
         pipe_unlock(pipe);
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLIN, &xTicksToWait));
+    while (POLL_CHECK(ret, &file->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
-static int pipe_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int pipe_write(void *ctx, const void *buffer, size_t size) {
     struct pipe_file *file = ctx;
     struct pipe *pipe = file->pipe;
     ring_t *ring = &pipe->ring;
@@ -106,7 +106,7 @@ static int pipe_write(void *ctx, const void *buffer, size_t size, int flags) {
         } 
         pipe_unlock(pipe);
     }
-    while (POLL_CHECK(flags, ret, &file->base, POLLOUT, &xTicksToWait));
+    while (POLL_CHECK(ret, &file->base, POLLOUT, &xTicksToWait));
     return ret;
 }
 
@@ -117,35 +117,36 @@ static const struct vfs_file_vtable pipe_vtable = {
     .write = pipe_write,
 };
 
-static struct pipe *pipe_open(mode_t mode) {
+int pipe_pair(struct poll_file *pipes[2]) {
     struct pipe *pipe = malloc(sizeof(struct pipe));
     if (!pipe) {
-        return NULL;
+        return -1;
     }
     if (!ring_alloc(&pipe->ring, 9)) {
         free(pipe);
-        pipe = NULL;
+        return -1;
     }
     pipe->mutex = xSemaphoreCreateMutexStatic(&pipe->mutex_buffer);
     pipe->ref_count = 0;
     for (int i = 0; i < 2; i++) {
         struct pipe_file *file = &pipe->files[i];
-        poll_file_init(&file->base, &pipe_vtable, (mode & ~S_IFMT) | S_IFIFO, 0);
+        poll_file_init(&file->base, &pipe_vtable, O_RDONLY + i, i ? (POLLOUT | POLLWRNORM) : 0);
         file->pipe = pipe;
         file->closed = 0;
         pipe->ref_count++;
+        pipes[i] = &file->base;
     }
-    return pipe;
+    return 0;
 }
 
 int pipe(int fildes[2]) {
-    struct pipe *pipe = pipe_open(0);
-    if (!pipe) {
+    struct poll_file *pipes[2]; 
+    if (pipe_pair(pipes) < 0) {
         return -1;
     }
     for (int i = 0; i < 2; i++) {
-        fildes[i] = poll_file_fd(&pipe->files[i].base, FREAD + i);
-        poll_file_release(&pipe->files[i].base);
+        fildes[i] = poll_file_fd(pipes[i]);
+        poll_file_release(pipes[i]);
     }
     int ret = 0;
     if ((fildes[0] < 0) || (fildes[1] < 0)) {

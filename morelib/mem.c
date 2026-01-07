@@ -58,7 +58,7 @@ static int mem_pread(void *ctx, void *buffer, size_t size, off_t offset) {
     }
 }
 
-static int mem_read(void *ctx, void *buffer, size_t size, int flags) {
+static int mem_read(void *ctx, void *buffer, size_t size) {
     struct mem_file *file = ctx;
     switch (file->dev) {
         case DEV_MEM:
@@ -103,7 +103,7 @@ static int mem_pwrite(void *ctx, const void *buffer, size_t size, off_t offset) 
     }
 }
 
-static int mem_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int mem_write(void *ctx, const void *buffer, size_t size) {
     struct mem_file *file = ctx;
     switch (file->dev) {
         case DEV_MEM:
@@ -134,7 +134,7 @@ static const struct vfs_file_vtable mem_file_vtable = {
     .write = mem_write,
 };
 
-static void *mem_open(const void *ctx, dev_t dev, mode_t mode) {
+static void *mem_open(const void *ctx, dev_t dev, int flags) {
     switch (dev) {
         case DEV_MEM:
         case DEV_NULL:
@@ -149,7 +149,7 @@ static void *mem_open(const void *ctx, dev_t dev, mode_t mode) {
     if (!file) {
         return NULL;
     }
-    vfs_file_init(&file->base, &mem_file_vtable, mode | S_IFCHR);
+    vfs_file_init(&file->base, &mem_file_vtable, flags);
     file->dev = dev;
     return file;
 }

@@ -24,7 +24,7 @@
 #include <unistd.h>
 #include "sys/ioctl.h"
 #include <sys/mman.h>
-#include <sys/time.h>
+#include <time.h>
 
 #include "hardware/flash.h"
 #include "hardware/xip_cache.h"
@@ -106,6 +106,8 @@ static int mtd_close(void *ctx) {
 static int mtd_fstat(void *ctx, struct stat *pstat) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
+    pstat->st_mode = S_IFCHR;
+    pstat->st_rdev = DEV_MTD0 | file->index;
     pstat->st_mtim = file->mtime;
     xSemaphoreGive(file->mutex);
     return 0;
@@ -212,8 +214,7 @@ static int mtd_rwrite(struct mtd_file *file, const void *buffer, size_t size, of
         errno = EFBIG;
         return -1;
     }
-    struct timeval t;
-    gettimeofday(&t, NULL);
+    clock_gettime(CLOCK_REALTIME, &file->mtime);
     if (part->device->info.erasesize > 1) {
         *offset &= -FLASH_PAGE_SIZE;
         size &= -FLASH_PAGE_SIZE;
@@ -225,8 +226,6 @@ static int mtd_rwrite(struct mtd_file *file, const void *buffer, size_t size, of
         // xip_cache_invalidate_range(part->offset + (*offset & ~7), ((*offset + size + 7) & ~7) - (*offset & ~7));
     }
     *offset += size;
-    file->mtime.tv_sec = t.tv_sec;
-    file->mtime.tv_nsec = t.tv_usec * 1000;
     return size;
 }
 
@@ -242,7 +241,7 @@ static int mtd_pwrite(void *ctx, const void *buffer, size_t size, off_t offset) 
     return ret;
 }
 
-static int mtd_read(void *ctx, void *buffer, size_t size, int flags) {
+static int mtd_read(void *ctx, void *buffer, size_t size) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     int ret = mtd_rread(file, buffer, size, &file->pos);
@@ -250,7 +249,7 @@ static int mtd_read(void *ctx, void *buffer, size_t size, int flags) {
     return ret;
 }
 
-static int mtd_write(void *ctx, const void *buffer, size_t size, int flags) {
+static int mtd_write(void *ctx, const void *buffer, size_t size) {
     struct mtd_file *file = ctx;
     xSemaphoreTake(file->mutex, portMAX_DELAY);
     int ret = mtd_rwrite(file, buffer, size, &file->pos);
@@ -270,7 +269,7 @@ static const struct vfs_file_vtable mtd_vtable = {
     .write = mtd_write,
 };
 
-static void *mtd_open(const void *ctx, dev_t dev, mode_t mode) {
+static void *mtd_open(const void *ctx, dev_t dev, int flags) {
     int index = minor(dev);
     if ((index >= MTD_NUM_PARTITIONS) || !mtd_partitions[index].device) {
         errno = ENODEV;
@@ -287,7 +286,7 @@ static void *mtd_open(const void *ctx, dev_t dev, mode_t mode) {
     if (!file) {
         goto exit;
     }
-    vfs_file_init(&file->base, &mtd_vtable, mode | S_IFCHR);
+    vfs_file_init(&file->base, &mtd_vtable, (flags & ~O_ACCMODE) | O_RDWR);
     file->index = index;
     file->mutex = xSemaphoreCreateMutexStatic(&file->xMutexBuffer);
     mtd_files[index] = file;

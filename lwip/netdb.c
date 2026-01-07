@@ -1,18 +1,21 @@
 // SPDX-FileCopyrightText: 2024 Gregory Neverov
 // SPDX-License-Identifier: MIT
 
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 #include "lwip/dns.h"
 
-#include "./dns.h"
+#include "morelib/lwip/dns.h"
 
+
+char *ip6addr_with_zone_ntoa_r(const ip6_addr_t *addr, char *buf, int buflen);
 
 static int netdb_gethostbyname(const char *hostname, ip_addr_t *ipaddr, u8_t addrtype) {
-    int fd = socket_dns();
-    if (fd < 0) {
+    struct socket *dns = socket_dns();
+    if (!dns) {
         return EAI_SYSTEM;
     }
 
@@ -26,20 +29,17 @@ static int netdb_gethostbyname(const char *hostname, ip_addr_t *ipaddr, u8_t add
     arg->addrtype = addrtype;
     strcpy(arg->hostname, hostname);
 
-    int ret = send(fd, &arg, sizeof(arg), 0);
-    if (ret < 0) {
-        ai_ret = (errno == EAGAIN) ? EAI_AGAIN : EAI_SYSTEM;
-    }
+    int ret = socket_send(dns, &arg, sizeof(arg), 0);
     if (ret < sizeof(arg)) {
+        ai_ret = (errno == EAGAIN) ? EAI_AGAIN : EAI_SYSTEM;
         goto exit;
     }
 
     arg = NULL;
-    ret = recv(fd, &arg, sizeof(arg), 0);
-    if (ret < 0) {
-        ai_ret = (errno == EAGAIN) ? EAI_AGAIN : EAI_SYSTEM;
-    }
+    ret = socket_recv(dns, &arg, sizeof(arg), 0);
     if (ret < sizeof(arg)) {
+        ai_ret = (errno == EAGAIN) ? EAI_AGAIN : EAI_SYSTEM;
+        arg = NULL;
         goto exit;
     }
 
@@ -59,27 +59,11 @@ static int netdb_gethostbyname(const char *hostname, ip_addr_t *ipaddr, u8_t add
     
 exit:
     free(arg);
-    close(fd);
+    socket_release(dns);
     return ai_ret;
 }
 
-void freeaddrinfo(struct addrinfo *ai) {
-    while (ai) {
-        struct addrinfo *next = ai->ai_next;
-        free(ai);
-        ai = next;
-    }
-}
-
-const char *gai_strerror(int ecode) {
-    return NULL;
-}
-
-int getaddrinfo(const char *nodename, const char *servname, const struct addrinfo *hints, struct addrinfo **res) {
-    if (!nodename && !servname) {
-        return EAI_NONAME;
-    }
-
+int lwip_getaddrinfo(const char *nodename, const char *servname, const struct addrinfo *hints, struct addrinfo **res) {
     int flags = hints ? hints->ai_flags : 0;
     int family = hints ? hints->ai_family : AF_UNSPEC;
     int socktype = hints ? hints->ai_socktype : 0;
@@ -132,6 +116,9 @@ int getaddrinfo(const char *nodename, const char *servname, const struct addrinf
             /* no DNS lookup, just parse for an address string */
             return EAI_NONAME;
         }
+        else if (!strcmp(nodename, "localhost")) {
+            ip_addr_set_loopback_val(family == AF_INET6, ipaddr);
+        }
         else {
             ret = netdb_gethostbyname(nodename, &ipaddr, addrtype);
             if (ret < 0) {
@@ -171,5 +158,34 @@ int getaddrinfo(const char *nodename, const char *servname, const struct addrinf
     result->addrinfo.ai_canonname = NULL;
     result->addrinfo.ai_next = NULL;
     *res = &result->addrinfo;
+    return 0;
+}
+
+int lwip_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *node, socklen_t nodelen, char *service, socklen_t servicelen, int flags) {
+    ip_addr_t ipaddr;
+    u16_t port;
+    socket_sockaddr_to_lwip(sa, salen, &ipaddr, &port);
+
+    if (flags & NI_NAMEREQD) {
+        return EAI_NONAME;
+    }
+
+    if (node) {
+        if (IP_IS_V6_VAL(ipaddr)) { 
+            if (!ip6addr_with_zone_ntoa_r(ip_2_ip6(&ipaddr), node, nodelen)) {
+                return EAI_OVERFLOW;
+            }
+        } else {
+            if (!ip4addr_ntoa_r(ip_2_ip4(&ipaddr), node, nodelen)) {
+                return EAI_OVERFLOW;
+            }
+        }
+    }
+    if (service) {
+        int n = snprintf(service, servicelen, "%hu", port);
+        if (n > servicelen) {
+            return EAI_OVERFLOW;
+        }
+    }
     return 0;
 }

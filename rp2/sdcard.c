@@ -7,6 +7,7 @@
 #include <memory.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
+#include <syslog.h>
 #include <unistd.h>
 #include "morelib/vfs.h"
 
@@ -26,6 +27,7 @@ static struct sdcard_file {
     uint cs_pin;
     uint baudrate;
     size_t num_blocks;
+    int ro;
 } *sdcard_file;
 
 enum sdcard_r1 {
@@ -49,6 +51,7 @@ static void sdcard_resume(struct sdcard_file *file);
 static bool sdcard_wait(struct sdcard_file *file, TickType_t xTicksToWait);
 static uint sdcard_cmd(struct sdcard_file *file, uint cmd, uint32_t arg, uint32_t *resp);
 static int sdcard_recv(struct sdcard_file *file, uint8_t *buf, size_t len);
+static int sdcard_send(struct sdcard_file *file, uint8_t token, const uint8_t *buf, size_t len);
 static bool sdcard_init(struct sdcard_file *file);
 
 static int sdcard_close(void *ctx) {
@@ -85,13 +88,15 @@ static int sdcard_send_cmd(struct sdcard_file *file, struct sdcard_ioctl *ioctl)
 static int sdcard_ioctl(void *ctx, unsigned long request, va_list args) {
     struct sdcard_file *file = ctx;
     switch (request) {
-        // case BLKROSET: {
-        //     return 0;
-        // }
+        case BLKROSET: {
+            const int *ro = va_arg(args, int *);
+            file->ro = *ro;
+            return 0;
+        }
 
         case BLKROGET: {
             int *ro = va_arg(args, int *);
-            *ro = 1;
+            *ro = file->ro;
             return 0;
         }
 
@@ -123,6 +128,18 @@ static int sdcard_ioctl(void *ctx, unsigned long request, va_list args) {
     }
 }
 
+static off_t sdcard_check_offset(struct sdcard_file *file, off_t offset) {
+    if (offset < 0) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (offset > (file->num_blocks << 9)) {
+        errno = EFBIG;
+        return -1;
+    }
+    return offset;
+}
+
 static off_t sdcard_lseek(void *ctx, off_t offset, int whence) {
     struct sdcard_file *file = ctx;
     switch (whence) {
@@ -138,26 +155,24 @@ static off_t sdcard_lseek(void *ctx, off_t offset, int whence) {
             errno = EINVAL;
             return -1;
     }
-    if (offset < 0) {
-        errno = EINVAL;
-        return -1;
-    }
-    if (offset > (file->num_blocks << 9)) {
-        errno = EFBIG;
+    if (sdcard_check_offset(file, offset) < 0) {
         return -1;
     }
     return file->ptr = offset;
 }
 
-static int sdcard_read(void *ctx, void *buf, size_t size, int flags) {
+static int sdcard_pread(void *ctx, void *buf, size_t size, off_t offset) {
     struct sdcard_file *file = ctx;
+    if (sdcard_check_offset < 0) {
+        return -1;
+    }
     size_t count = 0;
     if (!sdcard_wait(file, pdMS_TO_TICKS(100))) {
         return -1;
     }
     int ret = -1;
-    while (count < (size >> 9)) {
-        if (sdcard_cmd(file, 17, file->ptr, NULL) != SDCARD_R1_TRANSFER_STATE) {
+    while ((count < (size >> 9)) && (offset < (file->num_blocks << 9))) {
+        if (sdcard_cmd(file, 17, offset, NULL) != SDCARD_R1_TRANSFER_STATE) {
             goto cleanup;
         }
         if (sdcard_recv(file, buf, 512) < 0) {
@@ -165,7 +180,7 @@ static int sdcard_read(void *ctx, void *buf, size_t size, int flags) {
         }
         buf += 512;
         count++;
-        file->ptr += 512;
+        offset += 512;
     }
     ret = count << 9;
 cleanup:
@@ -173,22 +188,68 @@ cleanup:
     return ret;
 }
 
-// static int sdcard_write(void *ctx, const void *buf, size_t size) {
-//     struct sdcard_file *file = ctx;
-//     uint8_t *buffer = buf;
-//     size_t count = 0;
-//     // TODO
-// }
+static int sdcard_read(void *ctx, void *buf, size_t size) {
+    struct sdcard_file *file = ctx;
+    int ret = sdcard_pread(file, buf, size, file->ptr);
+    if (ret < 0) {
+        return -1;
+    }
+    file->ptr += ret;
+    return ret;
+}
+
+static int sdcard_pwrite(void *ctx, const void *buf, size_t size, off_t offset) {
+    struct sdcard_file *file = ctx;
+    if (sdcard_check_offset(file, offset) < 0) {
+        return -1;
+    }
+    if (file->ro) {
+        errno = EROFS;
+        return -1;
+    }
+    size_t count = 0;
+    if (!sdcard_wait(file, pdMS_TO_TICKS(100))) {
+        return -1;
+    }
+    int ret = -1;
+    while ((count < (size >> 9)) && (offset < (file->num_blocks << 9))) {
+        if (sdcard_cmd(file, 24, offset, NULL) != SDCARD_R1_TRANSFER_STATE) {
+            goto cleanup;
+        }
+        if (sdcard_send(file, 0xfe, buf, 512) < 0) {
+            goto cleanup;
+        }
+        buf += 512;
+        count++;
+        offset += 512;
+    }
+    ret = count << 9;
+cleanup:
+    sdcard_resume(file);
+    return ret;
+}
+
+static int sdcard_write(void *ctx, const void *buf, size_t size) {
+    struct sdcard_file *file = ctx;
+    int ret = sdcard_pwrite(file, buf, size, file->ptr);
+    if (ret < 0) {
+        return -1;
+    }
+    file->ptr += ret;
+    return ret;
+}
 
 static const struct vfs_file_vtable sdcard_vtable = {
     .close = sdcard_close,
     .ioctl = sdcard_ioctl,
     .lseek = sdcard_lseek,
+    .pread = sdcard_pread,
     .read = sdcard_read,
-    // .write = sdcard_write,
+    .pwrite = sdcard_pwrite,
+    .write = sdcard_write,
 };
 
-static void *sdcard_open(const void *ctx, dev_t dev, mode_t mode) {
+static void *sdcard_open(const void *ctx, dev_t dev, int flags) {
     uint spi_num = minor(dev) >> 7;
     uint cs_pin = minor(dev) & 0x7f;
     if ((spi_num >= NUM_SPIS) || (cs_pin >= NUM_BANK0_GPIOS)) {
@@ -196,18 +257,25 @@ static void *sdcard_open(const void *ctx, dev_t dev, mode_t mode) {
         return NULL;
     }
 
+    struct sdcard_file *file = NULL;
+    rp2_spi_t *spi = &rp2_spis[spi_num];
     dev_lock();
     if (sdcard_file) {
+        if ((sdcard_file->spi == spi) && (sdcard_file->cs_pin == cs_pin)) {
+            file = vfs_copy_file(&sdcard_file->base);
+        }
+        else {
+            errno = EBUSY;
+        }
         dev_unlock();
-        errno = EBUSY;
-        return NULL;
+        return file;
     }
-    struct sdcard_file *file = calloc(1, sizeof(struct sdcard_file));
+    file = calloc(1, sizeof(struct sdcard_file));
     if (!file) {
         dev_unlock();
         return NULL;
     }
-    vfs_file_init(&file->base, &sdcard_vtable, mode | S_IFBLK);
+    vfs_file_init(&file->base, &sdcard_vtable, flags);
     file->spi = &rp2_spis[spi_num];
     file->cs_pin = cs_pin;
     file->baudrate = 400000;
@@ -235,18 +303,7 @@ const struct dev_driver sdcard_drv = {
 };
 
 
-static void sdcard_log(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    #ifndef NDEBUG
-    fprintf(stderr, "%s: ", __FILE__);
-    vfprintf(stderr, format, args);
-    fprintf(stderr, "\n");
-    #endif
-    va_end(args);
-}
-
-static uint sdcard_crc7(uint8_t *buf, size_t len, uint crc) {
+static uint sdcard_crc7(const uint8_t *buf, size_t len, uint crc) {
     static const uint8_t table[16] = { 0, 9, 18, 27, 36, 45, 54, 63, 72, 65, 90, 83, 108, 101, 126, 119 };
     for (size_t i = 0; i < len; i++) {
         crc = table[(buf[i] >> 4) ^ (crc >> 3)] ^ (crc << 4);
@@ -257,7 +314,7 @@ static uint sdcard_crc7(uint8_t *buf, size_t len, uint crc) {
     return crc;
 }
 
-static uint sdcard_crc16(uint8_t *buf, size_t len, uint crc) {
+static uint sdcard_crc16(const uint8_t *buf, size_t len, uint crc) {
     static const uint16_t table[256] = {
         0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7, 0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
         0x1231, 0x0210, 0x3273, 0x2252, 0x52b5, 0x4294, 0x72f7, 0x62d6, 0x9339, 0x8318, 0xb37b, 0xa35a, 0xd3bd, 0xc39c, 0xf3ff, 0xe3de,
@@ -295,6 +352,10 @@ static bool sdcard_wait(struct sdcard_file *file, TickType_t xTicksToWait) {
         if (!rp2_spi_take(file->spi, xTicksToWait)) {
             break;
         }
+        if ((spi_get_hw(file->spi->inst)->cr1 & SPI_SSPCR1_SSE_BITS) == 0) {
+            rp2_spi_give(file->spi);
+            break;
+        }
         spi_set_baudrate(file->spi->inst, file->baudrate);
         gpio_put(file->cs_pin, false);
 
@@ -313,6 +374,7 @@ static bool sdcard_wait(struct sdcard_file *file, TickType_t xTicksToWait) {
 }
 
 static uint sdcard_cmd(struct sdcard_file *file, uint cmd, uint32_t arg, uint32_t *resp) {
+    // Write command packet
     uint8_t buf[6] = {
         0x40 | (cmd & 0x3f),
         arg >> 24,
@@ -324,6 +386,7 @@ static uint sdcard_cmd(struct sdcard_file *file, uint cmd, uint32_t arg, uint32_
     buf[5] = (sdcard_crc7(buf, 5, 0) << 1) | 0x01;
     spi_write_blocking(file->spi->inst, buf, 6);
 
+    // Wait for command response
     TickType_t xTicksToWait = pdMS_TO_TICKS(100);
     TimeOut_t xTimeOut;
     vTaskSetTimeOutState(&xTimeOut);
@@ -338,6 +401,7 @@ static uint sdcard_cmd(struct sdcard_file *file, uint cmd, uint32_t arg, uint32_
         portYIELD();
     }
 
+    // Read extended command response (if requested)
     if (buf[0] & 0xfe) {
         errno = EIO;
     } else if (resp) {
@@ -348,6 +412,7 @@ static uint sdcard_cmd(struct sdcard_file *file, uint cmd, uint32_t arg, uint32_
 }
 
 static int sdcard_recv(struct sdcard_file *file, uint8_t *buf, size_t len) {
+    // Wait for data token (first byte of data packet)
     TickType_t xTicksToWait = pdMS_TO_TICKS(100);
     TimeOut_t xTimeOut;
     vTaskSetTimeOutState(&xTimeOut);
@@ -355,9 +420,6 @@ static int sdcard_recv(struct sdcard_file *file, uint8_t *buf, size_t len) {
         spi_read_blocking(file->spi->inst, 0xff, buf, 1);
         if (buf[0] == 0xfe) {
             break;
-        } else if ((buf[0] & 0xf0) == 0x00) {
-            errno = EIO;
-            return -1;
         } else if (xTaskCheckForTimeOut(&xTimeOut, &xTicksToWait)) {
             errno = EIO;
             return -1;
@@ -365,14 +427,48 @@ static int sdcard_recv(struct sdcard_file *file, uint8_t *buf, size_t len) {
         portYIELD();
     }
 
+    // Read data block
     spi_read_blocking(file->spi->inst, 0xff, buf, len);
 
+    // Read CRC
     uint crc;
     spi_read_blocking(file->spi->inst, 0xff, (void *)&crc, 2);
     if (sdcard_crc16(buf, len, 0) != __builtin_bswap16(crc)) {
-        sdcard_log("CRC error");
+        syslog(LOG_CRIT, "%s: CRC error", __FILE__);
         errno = EIO;
         return -1;
+    }
+    return len;
+}
+
+static int sdcard_send(struct sdcard_file *file, uint8_t token, const uint8_t *buf, size_t len) {
+    // Write data packet (data token + data block + CRC)
+    uint crc = __builtin_bswap16(sdcard_crc16(buf, len, 0));
+    spi_write_blocking(file->spi->inst, &token, 1);
+    spi_write_blocking(file->spi->inst, buf, len);   
+    spi_write_blocking(file->spi->inst, (void *)&crc, 2);
+
+    // Read data response
+    uint8_t resp[1];
+    spi_read_blocking(file->spi->inst, 0xff, resp, 1);
+    if ((resp[0] & 0x1f) != 0x05) {
+        errno = EIO;
+        return -1;
+    }
+
+    // Wait for write to finish
+    TickType_t xTicksToWait = pdMS_TO_TICKS(100);
+    TimeOut_t xTimeOut;
+    vTaskSetTimeOutState(&xTimeOut);
+    for (;;) {
+        spi_read_blocking(file->spi->inst, 0xff, resp, 1);
+        if (resp[0] == 0xff) {
+            break;
+        } else if (xTaskCheckForTimeOut(&xTimeOut, &xTicksToWait)) {
+            errno = EIO;
+            return -1;
+        }
+        portYIELD();
     }
     return len;
 }
@@ -386,12 +482,12 @@ static bool sdcard_init(struct sdcard_file *file) {
     // Write SEND_IF_COND command
     uint32_t resp;
     if (sdcard_cmd(file, 8, 0x1aa, &resp) != SDCARD_R1_IDLE_STATE) {
-        sdcard_log("V1 cards not supported");
+        syslog(LOG_ERR, "%s: V1 cards not supported", __FILE__);
         return false;
     }
     // Read R7 response
     if ((resp & 0xfff) != 0x1aa) {
-        sdcard_log("voltage not supported");
+        syslog(LOG_ERR, "%s: voltage not supported", __FILE__);
         errno = EIO;
         return false;
     }
@@ -420,7 +516,7 @@ static bool sdcard_init(struct sdcard_file *file) {
     }
     // Read R3 response
     if (resp & 0x40000000) {
-        sdcard_log("non-SDSC cards not supported");
+        syslog(LOG_ERR, "%s: non-SDSC cards not supported", __FILE__);
         errno = EIO;
         return false;
     }

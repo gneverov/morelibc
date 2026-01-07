@@ -8,39 +8,41 @@
 
 #include "lwip/dns.h"
 
-#include "./dns.h"
+#include "morelib/lwip/dns.h"
 
 
 static const struct socket_vtable socket_dns_vtable;
 
-int socket_dns(void) {
-    struct socket *socket = socket_alloc(&socket_dns_vtable, 0, 0, 0);
-    if (!socket) {
-        return -1;
-    }
-
-    int fd = poll_file_fd(&socket->base, FREAD | FWRITE);
-    poll_file_release(&socket->base);
-    return fd;
+struct socket *socket_dns(void) {
+    struct socket_lwip *socket = socket_lwip_alloc(&socket_dns_vtable, 0, 0, 0);
+    return &socket->base;
 }
 
-static err_t socket_dns_lwip_abort(struct socket *socket) {
-    return ERR_OK;
+static int socket_dns_close(void *ctx) {
+    struct socket_lwip *socket = ctx;
+    if (socket->rx_data) {
+        size_t offset = socket->rx_offset;
+        while (offset < socket->rx_len) {
+            struct socket_dns_arg *arg;
+            pbuf_copy_partial(socket->rx_data, &arg, sizeof(arg), offset);
+            free(arg);
+            offset += sizeof(arg);
+        }    
+        pbuf_free(socket->rx_data);
+    }
+    return 0;
 }
 
-static void socket_dns_lwip_result(struct socket_dns_arg *arg, const ip_addr_t *ipaddr, err_t err) {
-    if (ipaddr) {
-        ip_addr_copy(arg->ipaddr, *ipaddr);
-    }
-    arg->err = err;
-    
-    struct socket *socket = arg->socket;
+static void socket_dns_lwip_result(struct socket_dns_arg *arg) {
+    struct socket_lwip *socket = arg->socket;
     arg->socket = NULL;
     if (socket) {
-        if (socket_push(socket, &arg, sizeof(arg)) < 0) {
+        socket_lock(&socket->base);
+        if (socket_lwip_push(socket, &arg, sizeof(arg)) < 0) {
             free(arg);
         }
-        poll_file_release(&socket->base);
+        socket_unlock(&socket->base);
+        socket_release(&socket->base);
     }
     else {
         free(arg);
@@ -50,66 +52,57 @@ static void socket_dns_lwip_result(struct socket_dns_arg *arg, const ip_addr_t *
 static void socket_dns_lwip_found(const char *name, const ip_addr_t *ipaddr, void *callback_arg) {
     // printf("dns_found: name=%s, found=%s\n", name, ipaddr ? ipaddr_ntoa(ipaddr) : "");
     struct socket_dns_arg *arg = callback_arg;
-    socket_dns_lwip_result(arg, ipaddr, ERR_OK);
+    if (ipaddr) {
+        ip_addr_copy(arg->ipaddr, *ipaddr);
+    } else {
+        ip_addr_set_zero(&arg->ipaddr);
+    }
+    arg->err = ERR_OK;
+    socket_dns_lwip_result(arg);
 }
 
-static err_t socket_dns_lwip_sendto(struct socket *socket, const void *buf, size_t len, const ip_addr_t *ipaddr, u16_t port) {
-    if (ipaddr != NULL) {
-        return ERR_ARG;
-    }
-
-    struct socket_dns_arg *arg;
-    if (len < sizeof(arg)) {
-        return 0;
-    }
-    arg = *(struct socket_dns_arg **)buf;
-    arg->socket = poll_file_copy(&socket->base);
-    ip_addr_set_any_val(0, arg->ipaddr);
-
-    err_t err = dns_gethostbyname_addrtype(arg->hostname, &arg->ipaddr, socket_dns_lwip_found, arg, arg->addrtype);
-    if (err == ERR_OK) {
-        socket_dns_lwip_result(arg, NULL, ERR_OK);
-    } 
-    else if (err != ERR_INPROGRESS) {
-        socket_dns_lwip_result(arg, NULL, err);
-    }
-    return sizeof(arg);
-}
-
-static int socket_dns_recvfrom(struct socket *socket, void *buf, size_t len, ip_addr_t *ipaddr, u16_t *port) {
-    if (ipaddr != NULL) {
+static int socket_dns_sendto(void *ctx, const void *buf, size_t len, const struct sockaddr *address, socklen_t address_len) {
+    struct socket_lwip *socket = ctx;
+    if (address != NULL) {
         errno = EINVAL;
         return -1;
     }
     struct socket_dns_arg *arg;
     if (len < sizeof(arg)) {
         return 0;
-    }    
-    if (socket_pop(socket, &arg, sizeof(arg)) < 0) {
-        return -1;
     }
-    *(struct socket_dns_arg **)buf = arg;
+    arg = *(struct socket_dns_arg **)buf;
+    arg->socket = socket_copy(&socket->base);
+    ip_addr_set_zero(&arg->ipaddr);
+
+    LOCK_TCPIP_CORE();
+    arg->err = dns_gethostbyname_addrtype(arg->hostname, &arg->ipaddr, socket_dns_lwip_found, arg, arg->addrtype);
+    if (arg->err == ERR_VAL) {
+        // lwip returns ERR_VAL if there are no dns servers
+        // return that as a not found result
+        arg->err = ERR_OK;
+    }
+    if (arg->err != ERR_INPROGRESS) {
+        socket_dns_lwip_result(arg);
+    }
+    UNLOCK_TCPIP_CORE();
     return sizeof(arg);
 }
 
-static void socket_dns_cleanup(struct socket *socket, struct pbuf *p, u16_t offset, u16_t len) {
-    struct socket_dns_arg *arg;
-    while (p != NULL && len >= sizeof(arg)) {
-        u16_t br = pbuf_copy_partial(p, &arg, sizeof(arg), offset);
-        assert(br == sizeof(arg));
-        p = pbuf_skip(p, offset + br, &offset);
-        len -= br;
-        free(arg);
+static int socket_dns_recvfrom(void *ctx, void *buf, size_t len, struct sockaddr *address, socklen_t *address_len) {
+    struct socket_lwip *socket = ctx;
+    if (address != NULL) {
+        errno = EINVAL;
+        return -1;
     }
+    if (len < sizeof(struct socket_dns_arg *)) {
+        return 0;
+    }
+    return socket_lwip_pop(socket, buf, sizeof(struct socket_dns_arg *));
 }
 
 static const struct socket_vtable socket_dns_vtable = {
-    .pcb_type = LWIP_PCB_DNS,
-
-    .lwip_close = socket_dns_lwip_abort,
-    .lwip_abort = socket_dns_lwip_abort,
-    .lwip_sendto = socket_dns_lwip_sendto,
-    
-    .socket_recvfrom = socket_dns_recvfrom,
-    .socket_cleanup = socket_dns_cleanup,
+    .close = socket_dns_close,
+    .sendto = socket_dns_sendto,
+    .recvfrom = socket_dns_recvfrom,
 };

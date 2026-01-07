@@ -6,13 +6,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/times.h>
-#include <time.h>  // needed for sys/timespec.h
+#include <sys/time.h>
+#include <time.h>
 #include <sys/timespec.h>
 #include <unistd.h>
 
-#include "pico/aon_timer.h"
-#include "pico/time.h"
 #include "pico/runtime_init.h"
 
 
@@ -24,53 +22,23 @@ void __weak __assert_func(const char *file, int line, const char *func, const ch
     _exit(1);
 }
 
-static int64_t epoch_time_us_since_boot;
-
 int gettimeofday (struct timeval *__restrict tv, __unused void *__restrict tz) {
-    if (tv) {
-        int64_t us_since_epoch = ((int64_t)to_us_since_boot(get_absolute_time())) - epoch_time_us_since_boot;
-        tv->tv_sec = (time_t)(us_since_epoch / 1000000);
-        tv->tv_usec = (suseconds_t)(us_since_epoch % 1000000);
+    if (!tv) {
+        return 0;
     }
-    return 0;
+    struct timespec ts;
+    int ret = clock_gettime(CLOCK_REALTIME, &ts);
+    TIMESPEC_TO_TIMEVAL(tv, &ts);
+    return ret;
 }
 
 int settimeofday(const struct timeval *tv, __unused const struct timezone *tz) {
-    if (tv) {
-        int64_t us_since_epoch = tv->tv_sec * 1000000 + tv->tv_usec;
-        epoch_time_us_since_boot = (int64_t)to_us_since_boot(get_absolute_time()) - us_since_epoch;
-    
-        struct timespec ts;
-        TIMEVAL_TO_TIMESPEC(tv, &ts);
-        if (aon_timer_is_running()) {
-            aon_timer_set_time(&ts);
-        } else {
-            aon_timer_start(&ts);
-        }
+    if (!tv) {
+        return 0;
     }
-    return 0;
-}
-__attribute__((constructor, visibility("hidden")))
-void inittimeofday(void) {
-    if (aon_timer_is_running()) {
-        struct timespec ts;
-        aon_timer_get_time(&ts);
-
-        int64_t us_since_epoch = (ts.tv_sec * 1000ll + ts.tv_nsec) * 1000ll;
-        epoch_time_us_since_boot = (int64_t)to_us_since_boot(get_absolute_time()) - us_since_epoch;
-    }
-}
-
-clock_t times(struct tms *tms) {
-#if CLOCKS_PER_SEC >= 1000000
-    tms->tms_utime = (clock_t)(to_us_since_boot(get_absolute_time()) * (CLOCKS_PER_SEC / 1000000));
-#else
-    tms->tms_utime = (clock_t)(to_us_since_boot(get_absolute_time()) / (1000000 / CLOCKS_PER_SEC));
-#endif
-    tms->tms_stime = 0;
-    tms->tms_cutime = 0;
-    tms->tms_cstime = 0;
-    return 0;
+    struct timespec ts;
+    TIMEVAL_TO_TIMESPEC(tv, &ts);
+    return clock_settime(CLOCK_REALTIME, &ts);
 }
 
 void runtime_init(void) {

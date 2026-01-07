@@ -9,7 +9,7 @@
 
 struct dev_driver {
     dev_t dev;
-    void *(*open)(const void *ctx, dev_t dev, mode_t mode);
+    void *(*open)(const void *ctx, dev_t dev, int flags);
     int (*stat)(const void *ctx, dev_t dev, struct stat *pstat);
 };
 
@@ -31,7 +31,7 @@ inline unsigned int minor(dev_t dev) {
 }
 // #define minor(dev) ((dev) & 0xff)
 
-struct vfs_file *opendev(dev_t dev, mode_t mode);
+struct vfs_file *opendev(dev_t dev, int flags);
 
 int statdev(dev_t dev, struct stat *pstat);
 
@@ -60,6 +60,11 @@ enum {
     DEV_CONSOLE = 0x0501,
     DEV_PTMX = 0x0502,
     DEV_TMUX = 0x0504,
+
+    DEV_LOOP0 = 0x0700,
+    DEV_LOOP1 = 0x0701,
+    DEV_LOOP2 = 0x0702,
+    DEV_LOOP3 = 0x0703,
 
     DEV_MTD0 = 0x5A00,
     DEV_MTD1 = 0x5A01,

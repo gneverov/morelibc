@@ -6,6 +6,16 @@
 #include "morelib/vfs.h"
 
 
+int vfs_fstat(struct vfs_file *file, struct stat *pstat) {
+    if (file->func->fstat) {
+        memset(pstat, 0, sizeof(struct stat));
+        return file->func->fstat(file, pstat);
+    } else {
+        errno = ENOSYS;
+        return -1;
+    }
+}
+
 int vfs_fsync(struct vfs_file *file) {
     if (file->func->fsync) {
         return file->func->fsync(file);
@@ -32,7 +42,7 @@ off_t vfs_lseek(struct vfs_file *file, off_t offset, int whence) {
     if (file->func->lseek) {
         return file->func->lseek(file, offset, whence);
     } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ESPIPE;
+        errno = file->func->isdir ? EISDIR : ESPIPE;
         return -1;
     }
 }
@@ -48,7 +58,7 @@ ssize_t vfs_pread(struct vfs_file *file, void *buffer, size_t size, off_t offset
     if (file->func->pread) {
         return file->func->pread(file, buffer, size, offset);
     } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
+        errno = file->func->isdir ? EISDIR : ENOSYS;
         return -1;
     }
 }
@@ -64,25 +74,25 @@ ssize_t vfs_pwrite(struct vfs_file *file, const void *buffer, size_t size, off_t
     if (file->func->pwrite) {
         return file->func->pwrite(file, buffer, size, offset);
     } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
+        errno = file->func->isdir ? EISDIR : ENOSYS;
         return -1;
     }
 }
 
-int vfs_read(struct vfs_file *file, void *buffer, size_t size, int flags) {
+int vfs_read(struct vfs_file *file, void *buffer, size_t size) {
     if (file->func->read) {
-        return file->func->read(file, buffer, size, flags);
+        return file->func->read(file, buffer, size);
     } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
+        errno = file->func->isdir ? EISDIR : ENOSYS;
         return -1;
     }
 }
 
-int vfs_write(struct vfs_file *file, const void *buffer, size_t size, int flags) {
+int vfs_write(struct vfs_file *file, const void *buffer, size_t size) {
     if (file->func->write) {
-        return file->func->write(file, buffer, size, flags);
+        return file->func->write(file, buffer, size);
     } else {
-        errno = S_ISDIR(file->mode) ? EISDIR : ENOSYS;
+        errno = file->func->isdir ? EISDIR : ENOSYS;
         return -1;
     }
 }

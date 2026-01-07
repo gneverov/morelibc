@@ -4,15 +4,15 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
-#include "morelib/poll.h"
+#include <unistd.h>
 
-#include "lwip/ip_addr.h"
+#include "lwip/ip.h"
 
-#include "./socket.h"
+#include "morelib/lwip/socket.h"
 
 
 __attribute__((visibility("hidden")))
-int socket_check_ret(err_t err) {
+int socket_lwip_check_ret(err_t err) {
     if (err >= 0) {
         return err;
     }
@@ -23,16 +23,31 @@ int socket_check_ret(err_t err) {
 }
 
 __attribute__((visibility("hidden")))
-void socket_lock(struct socket *socket) {
-    if (!xSemaphoreTake(socket->mutex, portMAX_DELAY)) {
-        assert(0);
+struct socket_lwip *socket_lwip_alloc(const struct socket_vtable *vtable, int domain, int type, int protocol) {
+    struct socket_lwip *socket = socket_alloc(sizeof(struct socket_lwip), vtable, domain, type, protocol);
+    if (!socket) {
+        return NULL;
     }
+    socket->timeout = portMAX_DELAY;
+    return socket;
 }
 
 __attribute__((visibility("hidden")))
-void socket_unlock(struct socket *socket) {
-    if (!xSemaphoreGive(socket->mutex)) {
-        assert(0);
+int socket_domain_to_lwip(int domain, u8_t *iptype) {
+    switch (domain) {
+        #if LWIP_IPV4
+        case AF_INET:
+            *iptype = IPADDR_TYPE_V4;
+            return 0;
+        #endif
+        #if LWIP_IPV6
+        case AF_INET6:
+            *iptype = IPADDR_TYPE_V6;
+            return 0;
+        #endif
+        default:
+            errno = EAFNOSUPPORT;
+            return -1;
     }
 }
 
@@ -104,35 +119,6 @@ void socket_sockaddr_from_lwip(struct sockaddr *address, socklen_t *address_len,
 }
 
 __attribute__((visibility("hidden")))
-struct socket *socket_alloc(const struct socket_vtable *vtable, int domain, int type, int protocol) {
-    struct socket *socket = calloc(1, sizeof(struct socket));
-    if (!socket) {
-        return NULL;
-    }
-    poll_file_init(&socket->base, &socket_vtable, S_IFSOCK, 0);
-    socket->func = vtable;
-    socket->mutex = xSemaphoreCreateMutexStatic(&socket->xMutexBuffer);
-    socket->domain = domain;
-    socket->type = type;
-    socket->protocol = protocol;
-    socket->timeout = portMAX_DELAY;
-    return socket;
-}
-
-__attribute__((visibility("hidden")))
-void socket_free(struct socket *socket) {
-    if (socket->rx_data) {
-        if (socket->func->socket_cleanup) {
-            socket->func->socket_cleanup(socket, socket->rx_data, socket->rx_offset, socket->rx_len);
-        }
-        pbuf_free(socket->rx_data);
-    }
-    socket->rx_data = NULL;
-    vSemaphoreDelete(socket->mutex);
-    free(socket);
-}
-
-__attribute__((visibility("hidden")))
 struct pbuf *pbuf_advance(struct pbuf *p, u16_t *offset, u16_t len) {
     struct pbuf *new_p = pbuf_skip(p, *offset + len, offset);
     if (new_p != p) {
@@ -165,56 +151,54 @@ struct pbuf *pbuf_grow(struct pbuf *p, u16_t new_len) {
     return p;
 }
 
-__attribute__((visibility("hidden")))
-bool socket_empty(struct socket *socket) {
-    return socket->rx_data == NULL || socket->rx_len == 0;
-}
+// __attribute__((visibility("hidden")))
+// bool socket_empty(struct socket *socket) {
+//     return socket->rx_data == NULL || socket->rx_len == 0;
+// }
 
 __attribute__((visibility("hidden")))
-int socket_pop(struct socket *socket, void *buffer, size_t size) {
+int socket_lwip_pop(struct socket_lwip *socket, void *buffer, size_t size) {
     if (!size) {
         errno = EINVAL;
         return -1;
     }
 
     int ret = -1;
-    socket_lock(socket);
-    if (socket->errcode) {
-        errno = socket->errcode;
-        goto exit;
-    }
-
-    if (socket->rx_data != NULL && socket->rx_len > 0) {
-        u16_t br = MIN(size, socket->rx_len);
-        if (buffer) {
-            br = pbuf_copy_partial(socket->rx_data, buffer, br, socket->rx_offset);
-        }
-        socket->rx_data = pbuf_advance(socket->rx_data, &socket->rx_offset, br);
-        socket->rx_len -= br;
-        ret = br;
-    }
-    else {
-        poll_file_notify(&socket->base, POLLIN | POLLRDNORM, 0);
-        if (socket->peer_closed) {
-            ret = 0;
+    TickType_t xTicksToWait = socket->timeout;
+    do {
+        socket_lock(&socket->base);
+        if (socket->rx_data != NULL && socket->rx_len > 0) {
+            u16_t br = MIN(size, socket->rx_len);
+            if (buffer) {
+                br = pbuf_copy_partial(socket->rx_data, buffer, br, socket->rx_offset);
+            }
+            socket->rx_data = pbuf_advance(socket->rx_data, &socket->rx_offset, br);
+            socket->rx_len -= br;
+            if (socket->rx_data == NULL || socket->rx_len == 0) {
+                socket_notify(&socket->base, POLLIN | POLLRDNORM, 0);
+            }
+            ret = br;
         }
         else {
-            errno = EAGAIN;
+            if (socket->peer_closed) {
+                ret = 0;
+            }
+            else {
+                errno = socket->errcode ? socket->errcode : EAGAIN;
+                ret = -1;
+            }
         }
-    }    
-    
-exit:
-    socket_unlock(socket);
+        socket_unlock(&socket->base);
+    }
+    while (POLL_SOCKET_CHECK(ret, &socket->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
 __attribute__((visibility("hidden")))
-int socket_push(struct socket *socket, const void *buffer, size_t size) {
-    int ret = -1;
-    socket_lock(socket);
+int socket_lwip_push(struct socket_lwip *socket, const void *buffer, size_t size) {
     if (socket->errcode) {
         errno = socket->errcode;
-        goto exit;
+        return -1;
     }
 
     u16_t offset = socket->rx_offset + socket->rx_len;
@@ -223,50 +207,198 @@ int socket_push(struct socket *socket, const void *buffer, size_t size) {
 
     if (pbuf_take_at(socket->rx_data, buffer, size, offset) != ERR_OK) {
         errno = ENOMEM;
-        goto exit;
+        return -1;
     }
     socket->rx_len += size;
-    poll_file_notify(&socket->base, 0, POLLIN | POLLRDNORM);
-    ret = size;
-
-exit:
-    socket_unlock(socket);
-    return ret;
+    socket_notify(&socket->base, 0, POLLIN | POLLRDNORM);
+    return size;
 }
 
 __attribute__((visibility("hidden")))
-void socket_push_pbuf(struct socket *socket, struct pbuf *p) {
+int socket_lwip_push_pbuf(struct socket_lwip *socket, struct pbuf *p) {
     assert(p);
+    if (socket->errcode) {
+        errno = socket->errcode;
+        return -1;
+    }    
     socket->rx_len += p->tot_len;
     socket->rx_data = pbuf_concat(socket->rx_data, p);
     assert(socket->rx_offset + socket->rx_len == socket->rx_data->tot_len);
-    poll_file_notify(&socket->base, 0, POLLIN | POLLRDNORM);
+    socket_notify(&socket->base, 0, POLLIN | POLLRDNORM);
+    return p->tot_len;
 }
 
 __attribute__((visibility("hidden")))
-int socket_dgram_recvfrom(struct socket *socket, void *buf, size_t len, ip_addr_t *ipaddr, u16_t *port) {
-    struct socket_dgram_recv recv_result;
-    int ret = socket_pop(socket, &recv_result, sizeof(recv_result));
+int socket_lwip_dgram_recvfrom(void *ctx, void *buf, size_t len, struct sockaddr *address, socklen_t *address_len) {
+    struct socket_lwip *socket = ctx;
+    struct socket_lwip_dgram_recv recv_result;
+    int ret = socket_lwip_pop(socket, &recv_result, sizeof(recv_result));
     if (ret > 0) {
         ret = pbuf_copy_partial(recv_result.p, buf, len, 0);
-        if (ipaddr) {
-            ip_addr_copy(*ipaddr, recv_result.ipaddr);
-        }
-        if (port) {
-            *port = recv_result.port;
+        if (address) {
+            socket_sockaddr_from_lwip(address, address_len, &recv_result.ipaddr, recv_result.port);
         }
         pbuf_free(recv_result.p);
     }
     return ret;
 }
 __attribute__((visibility("hidden")))
-void socket_dgram_cleanup(struct socket *socket, struct pbuf *p, u16_t offset, u16_t len) {
-    struct socket_dgram_recv recv_result;
-    while (p != NULL && len >= sizeof(recv_result)) {
-        u16_t br = pbuf_copy_partial(p, &recv_result, sizeof(recv_result), offset);
-        assert(br == sizeof(recv_result));
-        p = pbuf_skip(p, offset + br, &offset);
-        len -= br;
-        pbuf_free(recv_result.p);
+void socket_lwip_dgram_close(struct socket_lwip *socket) {
+    if (socket->rx_data) {
+        size_t offset = socket->rx_offset;
+        while (offset < socket->rx_len) {
+            struct socket_lwip_dgram_recv recv_result;
+            pbuf_copy_partial(socket->rx_data, &recv_result, sizeof(recv_result), offset);
+            pbuf_free(recv_result.p);
+            offset += sizeof(recv_result);
+        }
+        pbuf_free(socket->rx_data);
     }
 }
+
+__attribute__((visibility("hidden")))
+int socket_lwip_getpeername(struct socket_lwip *socket, struct sockaddr *address, socklen_t *address_len, int port_offset) {
+    LOCK_TCPIP_CORE();
+    int err = socket->errcode;
+    if (socket->pcb.ip) {
+        u16_t port = (port_offset >= 0) ? *(u16_t *)(socket->pcb.ptr + port_offset) : 0;
+        socket_sockaddr_from_lwip(address, address_len, &socket->pcb.ip->remote_ip, port);
+        err = socket->connected ? ERR_OK : ERR_CONN;
+    }
+    UNLOCK_TCPIP_CORE();
+    return socket_lwip_check_ret(err);
+}
+
+__attribute__((visibility("hidden")))
+int socket_lwip_getsockname(struct socket_lwip *socket, struct sockaddr *address, socklen_t *address_len, int port_offset) {
+    LOCK_TCPIP_CORE();
+    int err = socket->errcode;
+    if (socket->pcb.ip) {
+        u16_t port = (port_offset >= 0) ? *(u16_t *)(socket->pcb.ptr + port_offset) : 0;
+        socket_sockaddr_from_lwip(address, address_len, &socket->pcb.ip->local_ip, port);
+        err = ERR_OK;
+    }
+    UNLOCK_TCPIP_CORE();
+    return socket_lwip_check_ret(err);
+}
+
+static struct socket *socket_lwip_create(int domain, int type, int protocol) {
+    u8_t iptype;
+    if (socket_domain_to_lwip(domain, &iptype) < 0) {
+        return NULL;
+    }
+
+    struct socket *(*vtable)(int domain, int type, int protocol);
+    switch (type) {
+        #if LWIP_TCP
+        case SOCK_STREAM:
+            struct socket *socket_tcp_socket(int domain, int type, int protocol);
+            vtable = socket_tcp_socket;
+            break;
+        #endif
+        #if LWIP_RAW
+        case SOCK_RAW:
+            struct socket *socket_raw_socket(int domain, int type, int protocol);
+            vtable = socket_raw_socket;
+            break;
+        #endif
+        #if LWIP_UDP
+        case SOCK_DGRAM:
+            struct socket *socket_udp_socket(int domain, int type, int protocol);
+            vtable = socket_udp_socket;
+            break;
+        #endif
+        default:
+            errno = ESOCKTNOSUPPORT;
+            return NULL;
+    }
+
+    return vtable(domain, type, protocol);
+}
+
+int socketpair(int domain, int type, int protocol, int socket_vector[2]) {
+    u8_t iptype;
+    if (socket_domain_to_lwip(domain, &iptype) < 0) {
+        return -1;
+    }
+
+    int ret = -1;
+    int client = -1, accepted = -1;
+    int server = socket(domain, type, protocol);
+    if (server < 0) {
+        goto cleanup;
+    }
+
+    ip_addr_t ipaddr;
+    ip_addr_set_loopback_val(iptype == IPADDR_TYPE_V6, ipaddr);
+    struct sockaddr_storage server_addr;
+    socklen_t server_addr_len = sizeof(server_addr);
+    socket_sockaddr_from_lwip((struct sockaddr *)&server_addr, &server_addr_len, &ipaddr, 0);
+    if (bind(server, (struct sockaddr *)&server_addr, server_addr_len) < 0) {
+        goto cleanup;
+    }
+
+    server_addr_len = sizeof(server_addr);
+    if (getsockname(server, (struct sockaddr *)&server_addr, &server_addr_len) < 0) {
+        goto cleanup;
+    }
+
+    if (listen(server, 1) < 0) {
+        goto cleanup;
+    }
+
+    client = socket(domain, type, protocol);
+    if (client < 0) {
+        goto cleanup;
+    }
+
+    if (connect(client, (struct sockaddr *)&server_addr, server_addr_len) < 0) {
+        goto cleanup;
+    }
+
+    struct sockaddr_storage client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);
+    accepted = accept(server, (struct sockaddr *)&client_addr, &client_addr_len);
+    if (accepted < 0) {
+        goto cleanup;
+    }
+
+    socket_vector[0] = client;
+    client = -1;
+    socket_vector[1] = accepted;
+    accepted = -1;
+    ret = 0;
+
+cleanup:
+    if (server >= 0) {
+        close(server);
+    }
+    if (client >= 0) {
+        close(client);
+    }
+    if (accepted >= 0) {
+        close(accepted);
+    }
+    return ret;    
+}
+
+int lwip_getaddrinfo(const char *nodename, const char *servname, const struct addrinfo *hints, struct addrinfo **res);
+int lwip_getnameinfo(const struct sockaddr *sa, socklen_t salen, char *node, socklen_t nodelen, char *service, socklen_t servicelen, int flags);
+
+#if LWIP_IPV4
+const struct socket_family lwip_ipv4_af = {
+    .family = AF_INET,
+    .socket = socket_lwip_create,
+    .getaddrinfo = lwip_getaddrinfo,
+    .getnameinfo = lwip_getnameinfo,
+};
+#endif
+
+#if LWIP_IPV6
+const struct socket_family lwip_ipv6_af = {
+    .family = AF_INET6,
+    .socket = socket_lwip_create,
+    .getaddrinfo = lwip_getaddrinfo,
+    .getnameinfo = lwip_getnameinfo,
+};
+#endif

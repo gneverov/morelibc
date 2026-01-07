@@ -7,8 +7,7 @@
 
 
 int fstatvfs(int fd, struct statvfs *buf) {
-    int flags = 0;
-    struct vfs_file *file = vfs_acquire_file(fd, &flags);
+    struct vfs_file *file = vfs_acquire_file(fd, 0);
     if (!file) {
         return -1;
     }

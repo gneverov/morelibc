@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #define _POSIX_CPUTIME
-#define _POSIX_MONOTONIC_CLOCK
 #define _POSIX_THREAD_CPUTIME
 #include <sys/types.h>
 

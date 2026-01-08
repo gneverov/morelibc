@@ -37,7 +37,7 @@ struct socket_tls_context {
     char **alpn_protocols;
 #endif
 #ifdef MBEDTLS_ECDH_C
-    mbedtls_ecp_group_id curves[2];
+    uint16_t groups[2];
 #endif
 };
 

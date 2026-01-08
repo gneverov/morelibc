@@ -17,7 +17,7 @@
 #include "mbedtls/error.h"
 #include "mbedtls/platform.h"
 #include "mbedtls/sha1.h"
-#include "mbedtls/ssl_internal.h"
+// #include "mbedtls/ssl.h"
 
 #include "morelib/lwip/tls.h"
 
@@ -124,7 +124,11 @@ void socket_tls_context_free(struct socket_tls_context *context) {
     int ref_count = --context->ref_count;
     taskEXIT_CRITICAL();
     if (ref_count == 0) {
-        mbedtls_ssl_key_cert *key_cert = context->conf.key_cert;
+        struct key_cert {
+            mbedtls_x509_crt *cert;
+            mbedtls_pk_context *key;
+            struct key_cert *next;
+        } *key_cert = (struct key_cert *)context->conf.private_key_cert;
         while (key_cert) {
             socket_tls_x509_crt_free(&key_cert->cert);
             mbedtls_pk_free(key_cert->key);
@@ -197,9 +201,9 @@ static int socket_tls_name_hash(const mbedtls_x509_buf *name_raw, unsigned char 
 
     mbedtls_sha1_context sha1;
     mbedtls_sha1_init(&sha1);
-    mbedtls_sha1_starts_ret(&sha1);
-    mbedtls_sha1_update_ret(&sha1, begin, end - begin);
-    mbedtls_sha1_finish_ret(&sha1, hash);
+    mbedtls_sha1_starts(&sha1);
+    mbedtls_sha1_update(&sha1, begin, end - begin);
+    mbedtls_sha1_finish(&sha1, hash);
 
 cleanup:
     free(buf);
@@ -231,7 +235,7 @@ static int socket_tls_find_ca(struct socket_tls_context *context, unsigned char 
         ret = 0;
     }
     else {
-        ret = MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED;
+        ret = MBEDTLS_ERR_ERROR_GENERIC_ERROR;
     }
 
 cleanup:
@@ -292,7 +296,7 @@ static int socket_tls_ca_cb(void *p_ctx, mbedtls_x509_crt const *child, mbedtls_
     }
 
     ret = socket_tls_find_ca(context, issuer_hash, candidate_cas);
-    if (ret != MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED) {
+    if (ret != MBEDTLS_ERR_ERROR_GENERIC_ERROR) {
         return ret;
     }
 
@@ -320,7 +324,7 @@ static int socket_tls_ca_cb(void *p_ctx, mbedtls_x509_crt const *child, mbedtls_
         return socket_tls_find_ca(context, issuer_hash, candidate_cas);
     }
     else {
-        return MBEDTLS_ERR_SSL_PEER_VERIFY_FAILED;
+        return MBEDTLS_ERR_ERROR_GENERIC_ERROR;
     }
 }
 #endif
@@ -433,7 +437,7 @@ int socket_tls_load_cert_chain(struct socket_tls_context *context, const char *c
     }
     mbedtls_pk_init(pk_key);
 
-    ret = mbedtls_pk_parse_keyfile(pk_key, keyfile, password);
+    ret = mbedtls_pk_parse_keyfile(pk_key, keyfile, password, context->conf.private_f_rng, context->conf.private_p_rng);
     if (ret != 0) {
         goto cleanup;
     }

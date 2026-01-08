@@ -50,6 +50,8 @@ set_source_files_properties(
 target_compile_definitions(morelib_core INTERFACE
     _DEFAULT_SOURCE
     _XOPEN_SOURCE
+    _POSIX_VERSION=200809L
+    _POSIX_MONOTONIC_CLOCK
 )
 
 target_link_options(morelib_core INTERFACE

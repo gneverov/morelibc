@@ -6,7 +6,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#if MORELIB_LWIP
 #include "lwip/opt.h"
+#endif
 
 #define SOCK_STREAM 1                   // Byte-stream socket.
 #define SOCK_RAW 2                      // Raw Protocol Interface.

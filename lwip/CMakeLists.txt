@@ -19,3 +19,5 @@ target_sources(morelib_lwip INTERFACE
 )
 
 target_include_directories(morelib_lwip INTERFACE include)
+
+target_compile_definitions(morelib_lwip INTERFACE MORELIB_LWIP=1)

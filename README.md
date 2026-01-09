@@ -20,7 +20,15 @@ This project also contains a number of optional components for integrating popul
 - [Mbed-TLS](https://github.com/Mbed-TLS/mbedtls): sockets with TLS support
 
 ## Building
-To build the [minimal example](/example/):
+### Toolchain
+Download and extract the [ARM GNU toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads), if you don't already have it. Make sure the `bin` directory containing the compiler etc. is in your `PATH` environment variable.
+
+### Picolibc
+Run the script `build_picolibc.sh` to build Picolibc. The script will install Picolibc into the GCC sysroot location, which is where you previously extracted the toolchain.
+See the Picolibc [documentation](https://github.com/picolibc/picolibc/blob/main/doc/build.md) for more info on building Picolibc, including installing its prerequisites.
+
+### Morelibc
+Morelibc is built using CMake. To build the [minimal example](/example/):
 ```
 morelibc/example$ cmake -B build
 morelibc/example$ cmake --build build

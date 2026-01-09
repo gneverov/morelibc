@@ -4,14 +4,14 @@ include(FetchContent)
 
 FetchContent_Declare(
     pico-sdk
-    GIT_REPOSITORY https://github.com/gneverov/pico-sdk
-    GIT_TAG efe2103f9b28458a1615ff096054479743ade236
+    GIT_REPOSITORY https://github.com/raspberrypi/pico-sdk.git 
+    GIT_TAG a1438dff1d38bd9c65dbd693f0e5db4b9ae91779
 )
 
 FetchContent_Declare(
     freertos
     GIT_REPOSITORY https://github.com/gneverov/FreeRTOS-Kernel.git
-    GIT_TAG ad0cff000985a06733542ce486278b5032db2d1e
+    GIT_TAG c39540d87fe330214b5996d258007fcdc89b127f
 )
 
 FetchContent_Declare(

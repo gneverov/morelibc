@@ -29,6 +29,7 @@ target_link_libraries(morelib_rp2 INTERFACE
 	hardware_pwm
 	hardware_spi
 	hardware_uart
+    pico_rand
 	pico_runtime
 )
 

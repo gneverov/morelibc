@@ -138,7 +138,8 @@ to exclude the API function. */
 // RP2040-specific support for interprocessor interrupts
 #define configUSE_IPIS                          1
 #if configUSE_IPIS
-extern void vPortTaskSwitchHook();
+typedef struct tskTaskControlBlock *TaskHandle_t;
+extern void vPortTaskSwitchHook(TaskHandle_t task);
 #define portTASK_SWITCH_HOOK vPortTaskSwitchHook
 #endif
 

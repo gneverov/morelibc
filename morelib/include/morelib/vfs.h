@@ -123,3 +123,7 @@ ssize_t vfs_pread(struct vfs_file *file, void *buffer, size_t size, off_t offset
 ssize_t vfs_pwrite(struct vfs_file *file, const void *buffer, size_t size, off_t offset);
 int vfs_read(struct vfs_file *file, void *buffer, size_t size);
 int vfs_write(struct vfs_file *file, const void *buffer, size_t size);
+
+static inline int vfs_file_fd(struct vfs_file *file) {
+    return vfs_replace(-1, file);
+}

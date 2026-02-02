@@ -8,9 +8,11 @@ target_sources(morelib_rp2 INTERFACE
     flash.c
 	flash_lockout.c
     gpio.c
+    gpiodev.c
     irq.c
     mtd.c
     pio.c
+    pio_sm.c
     pwm.c
     random.c
     sdcard.c
@@ -25,6 +27,8 @@ target_link_libraries(morelib_rp2 INTERFACE
 	morelib_core
 	hardware_dma
 	hardware_flash
+	hardware_gpio
+	hardware_irq
 	hardware_pio
 	hardware_pwm
 	hardware_spi
@@ -40,8 +44,9 @@ target_sources(pico_morelibc_interface INTERFACE morelibc_interface.c)
 target_link_libraries(pico_morelibc_interface INTERFACE 
     pico_aon_timer
     pico_runtime_init
-    pico_time
 )
+
+add_subdirectory(pioasm)
 
 if(PICO_CYW43_SUPPORTED)
     add_library(cyw43_helper INTERFACE)

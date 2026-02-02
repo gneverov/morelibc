@@ -47,8 +47,10 @@ static inline void *poll_file_copy(struct poll_file *file) {
 static inline int poll_file_fd(struct poll_file *file) {
     return vfs_replace(-1, &file->base);
 }
-void poll_file_notify(struct poll_file *file, uint clear, uint set);
 void poll_file_notify_from_isr(struct poll_file *file, uint clear, uint set, BaseType_t *pxHigherPriorityTaskWoken);
+static inline void poll_file_notify(struct poll_file *file, uint clear, uint set) {
+    poll_file_notify_from_isr(file, clear, set, NULL);
+}
 uint poll_file_poll(struct poll_file *file);
 int poll_file_wait(struct poll_file *file, uint events, TickType_t *pxTicksToWait);
 

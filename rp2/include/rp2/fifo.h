@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "morelib/poll.h"
 #include "morelib/ring.h"
 
 #include "FreeRTOS.h"
@@ -32,9 +33,13 @@ void rp2_fifo_deinit(rp2_fifo_t *fifo);
 
 void rp2_fifo_exchange(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count);
 
-void rp2_fifo_exchange_from_isr(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count);
+void rp2_fifo_exchange_from_isr(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count, BaseType_t *pxHigherPriorityTaskWoken);
 
 size_t rp2_fifo_transfer(rp2_fifo_t *fifo, void *buffer, size_t size);
+
+int rp2_fifo_read(struct poll_file *file, rp2_fifo_t *fifo, void *buffer, size_t size, TickType_t *pxTicksToWait);
+
+int rp2_fifo_write(struct poll_file *file, rp2_fifo_t *fifo, const void *buffer, size_t size, TickType_t *pxTicksToWait);
 
 void rp2_fifo_clear(rp2_fifo_t *fifo);
 

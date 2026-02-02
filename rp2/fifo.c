@@ -77,14 +77,10 @@ static void rp2_fifo_irq_handler(uint channel, void *context, BaseType_t *pxHigh
     rp2_dma_acknowledge_irq(channel);
 
     ring_t ring;
-    rp2_fifo_exchange_from_isr(fifo, &ring, 0);
-
-    if (fifo->handler) {
-        fifo->handler(fifo, &ring, pxHigherPriorityTaskWoken);
-    }
+    rp2_fifo_exchange_from_isr(fifo, &ring, 0, pxHigherPriorityTaskWoken);
 }
 
-static void rp2_fifo_do_exchange(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count) {
+static void rp2_fifo_do_exchange(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count, BaseType_t *pxHigherPriorityTaskWoken) {
     size_t dma_count = 0;
     if ((fifo->channel >= 0) && fifo->trans_count) {
         uint trans_count = dma_channel_hw_addr(fifo->channel)->transfer_count;
@@ -100,6 +96,10 @@ static void rp2_fifo_do_exchange(rp2_fifo_t *fifo, ring_t *ring, size_t usr_coun
     }
 
     *ring = fifo->ring;
+
+    if (fifo->handler && (dma_count || usr_count)) {
+        fifo->handler(fifo, ring, pxHigherPriorityTaskWoken);
+    }
 
     if ((fifo->channel >= 0) && !fifo->trans_count) {
         size_t begin_index = fifo->tx ? ring->read_index : ring->write_index;
@@ -120,13 +120,13 @@ static void rp2_fifo_do_exchange(rp2_fifo_t *fifo, ring_t *ring, size_t usr_coun
 
 void rp2_fifo_exchange(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count) {
     taskENTER_CRITICAL();
-    rp2_fifo_do_exchange(fifo, ring, usr_count);
+    rp2_fifo_do_exchange(fifo, ring, usr_count, NULL);
     taskEXIT_CRITICAL();
 }
 
-void rp2_fifo_exchange_from_isr(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count) {
+void rp2_fifo_exchange_from_isr(rp2_fifo_t *fifo, ring_t *ring, size_t usr_count, BaseType_t *pxHigherPriorityTaskWoken) {
     UBaseType_t uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
-    rp2_fifo_do_exchange(fifo, ring, usr_count);
+    rp2_fifo_do_exchange(fifo, ring, usr_count, pxHigherPriorityTaskWoken);
     taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
 }
 
@@ -138,6 +138,50 @@ size_t rp2_fifo_transfer(rp2_fifo_t *fifo, void *buffer, size_t size) {
         rp2_fifo_exchange(fifo, &ring, count);
     }
     return count;
+}
+
+int rp2_fifo_read(struct poll_file *file, rp2_fifo_t *fifo, void *buffer, size_t size, TickType_t *pxTicksToWait) {
+    if (fifo->tx) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (fifo->channel < 0) {
+        return 0;
+    }
+
+    int br = 0;
+    while ((br == 0) && (br < size)) {
+        br = rp2_fifo_transfer(fifo, buffer, size);
+        if (br == 0) {
+            if (poll_file_wait(file, POLLIN | POLLRDNORM, pxTicksToWait) < 0) {
+                return -1;
+            }
+        }
+    }
+    return br;
+}
+
+int rp2_fifo_write(struct poll_file *file, rp2_fifo_t *fifo, const void *buffer, size_t size, TickType_t *pxTicksToWait) {
+    if (!fifo->tx) {
+        errno = EINVAL;
+        return -1;
+    }    
+    if (fifo->channel < 0) {
+        errno = EPIPE;
+        return -1;
+    }
+
+    int bw = 0;
+    while (bw < size) {
+        int ret = rp2_fifo_transfer(fifo, (void *)buffer + bw, size - bw);
+        if (ret == 0) {
+            if (poll_file_wait(file, POLLOUT | POLLWRNORM, pxTicksToWait) < 0) {
+                break;
+            }
+        }
+        bw += ret;
+    }
+    return bw ? bw : -1;
 }
 
 static void rp2_fifo_start_dma(rp2_fifo_t *fifo, bool enabled) {

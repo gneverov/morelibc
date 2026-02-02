@@ -87,4 +87,6 @@ enum {
     DEV_MTDBLK3 = 0xEA03,
 
     DEV_UF2 = 0xf000,
+
+    DEV_GPIOCHIP0 = 0xfe00,
 };

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#define IOCTL_MAX_ARG_SIZE 64
+#define IOCTL_MAX_ARG_SIZE 256
 
 
 // Block device ioctls

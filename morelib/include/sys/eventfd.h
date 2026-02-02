@@ -3,8 +3,11 @@
 
 #pragma once
 
-#define EFD_NONBLOCK    0x02 
-#define EFD_SEMAPHORE   0x04
+#include <fcntl.h>
+
+#define EFD_CLOEXEC     O_CLOEXEC
+#define EFD_NONBLOCK    O_NONBLOCK 
+#define EFD_SEMAPHORE   0x80000000
 
 
 int eventfd(unsigned int initval, int flags);

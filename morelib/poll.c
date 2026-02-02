@@ -84,25 +84,13 @@ struct poll_file *poll_file_acquire(int fd, int flags) {
     return NULL;
 }
 
-void poll_file_notify(struct poll_file *file, uint clear_events, uint set_events) {
-    taskENTER_CRITICAL();
-    uint new_events = ~file->events & set_events;
-    file->events &= ~clear_events;
-    file->events |= set_events;
-    if (new_events) {
-        struct poll_waiter *desc = file->waiters;
-        while (desc) {
-            if (desc->events & new_events) {
-                desc->notify(desc, NULL);
-            }
-            desc = desc->next;
-        }
-    }
-    taskEXIT_CRITICAL();
-}
-
 void poll_file_notify_from_isr(struct poll_file *file, uint clear_events, uint set_events, BaseType_t *pxHigherPriorityTaskWoken) {
-    UBaseType_t uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();
+    UBaseType_t uxSavedInterruptStatus;
+    if (pxHigherPriorityTaskWoken) {
+        uxSavedInterruptStatus = taskENTER_CRITICAL_FROM_ISR();    
+    } else {
+        taskENTER_CRITICAL();
+    }
     uint new_events = ~file->events & set_events;
     file->events &= ~clear_events;
     file->events |= set_events;
@@ -115,7 +103,11 @@ void poll_file_notify_from_isr(struct poll_file *file, uint clear_events, uint s
             desc = desc->next;
         }
     }
-    taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);
+    if (pxHigherPriorityTaskWoken) {
+        taskEXIT_CRITICAL_FROM_ISR(uxSavedInterruptStatus);  
+    } else {
+        taskEXIT_CRITICAL();
+    }    
 }
 struct ppoll_waiter {
     struct poll_waiter base;
@@ -141,6 +133,11 @@ uint poll_file_poll(struct poll_file *file) {
 }
 
 int poll_file_wait(struct poll_file *file, uint events, TickType_t *pxTicksToWait) {
+    if (file->base.flags & FNONBLOCK) {
+        errno = EAGAIN;
+        return -1;
+    }
+    
     struct ppoll_waiter desc;
     poll_waiter_init(&desc.base, events, ppoll_notify);
     desc.task = xTaskGetCurrentTaskHandle();

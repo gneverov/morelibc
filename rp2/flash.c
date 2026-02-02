@@ -214,7 +214,7 @@ static int scan_psram_cs(size_t *size) {
             psram_cs = csn[i];
             return psram_cs;
         }
-        gpio_init(csn[i]);
+        gpio_deinit(csn[i]);
     }
     return -1;
 }

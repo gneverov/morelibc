@@ -86,15 +86,13 @@ static void term_uart_handler1(void) {
 static void term_uart_tx_handler(rp2_fifo_t *fifo, const ring_t *ring, BaseType_t *pxHigherPriorityTaskWoken) {
     term_uart_t *file = (void *)fifo - offsetof(term_uart_t, tx_fifo);
     uint events = 0;
-    if (ring_write_count(ring) >= (ring->size / 4)) {
-        events |= POLLOUT | POLLWRNORM;
-    }
     if (!ring_read_count(ring)) {
         events |= POLLDRAIN;
     }
-    if (events) {
-        poll_file_notify_from_isr(&file->base, 0, events, pxHigherPriorityTaskWoken);
+    if (ring_write_count(ring) >= (ring->size / 4)) {
+        events |= POLLOUT | POLLWRNORM;
     }
+    poll_file_notify_from_isr(&file->base, POLLOUT | POLLWRNORM | POLLDRAIN, events, pxHigherPriorityTaskWoken);    
 }
 
 static void term_uart_file_deinit(term_uart_t *file) {
@@ -176,40 +174,27 @@ static int term_uart_ioctl(void *ctx, unsigned long request, va_list args) {
 static int term_uart_read(void *ctx, void *buffer, size_t size) {
     term_uart_t *file = ctx;
     TickType_t xTicksToWait = portMAX_DELAY;
-    int ret;
-    do {
+    int ret = 0;
+    while ((ret == 0) && (ret < size)) {
         taskENTER_CRITICAL();
         ret = ring_read(&file->rx_fifo, buffer, size);
-        if (ring_read_count(&file->rx_fifo) == 0) {
+        if (ret == 0) {
             poll_file_notify(&file->base, POLLIN | POLLRDNORM, 0);
         }
         taskEXIT_CRITICAL();
-        if (!ret && size) {
-            errno = EAGAIN;
-            ret = -1;
+        if (ret == 0) {
+            if (poll_file_wait(&file->base, POLLIN | POLLRDNORM, &xTicksToWait) < 0) {
+                return -1;
+            }
         }
     }
-    while (POLL_CHECK(ret, &file->base, POLLIN, &xTicksToWait));
     return ret;
 }
 
 static int term_uart_write(void *ctx, const void *buffer, size_t size) {
     term_uart_t *file = ctx;
     TickType_t xTicksToWait = portMAX_DELAY;
-    int ret;
-    do {    
-        poll_file_notify(&file->base, POLLOUT | POLLWRNORM, 0);
-        ret = rp2_fifo_transfer(&file->tx_fifo, (void *)buffer, size);
-        if (ret >= size) {
-            poll_file_notify(&file->base, 0, POLLOUT | POLLWRNORM);
-        }      
-        if (!ret && size) {
-            errno = EAGAIN;
-            ret = -1;
-        }
-    }
-    while (POLL_CHECK(ret, &file->base, POLLOUT, &xTicksToWait));
-    return ret;
+    return rp2_fifo_write(&file->base, &file->tx_fifo, buffer, size, &xTicksToWait);
 }
 
 static const struct vfs_file_vtable term_uart_vtable = {

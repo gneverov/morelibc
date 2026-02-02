@@ -21,9 +21,10 @@ void rp2_gpio_init(void) {
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
-void rp2_gpio_set_irq_enabled(uint gpio, uint32_t events, bool enabled) {
+void rp2_gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled) {
     UBaseType_t save = set_interrupt_core_affinity();
-    gpio_set_irq_enabled(gpio, events, enabled);
+    assert(rp2_gpio_handlers[gpio]);
+    gpio_set_irq_enabled(gpio, event_mask, enabled);
     clear_interrupt_core_affinity(save);
 }
 
@@ -71,9 +72,9 @@ void rp2_gpio_debug(uint gpio) {
     printf("\n");
     printf("  dir:         %s\n", gpio_is_dir_out(gpio) ? "out" : "in");
     printf("  value:       %d\n", gpio_get(gpio));
-    uint32_t events = irq_ctrl_base->inte[gpio / 8];
-    events >>= 4 * (gpio % 8);
-    printf("  inte:        0x%02lx\n", events & 0xf);
+    uint32_t event_mask = irq_ctrl_base->inte[gpio / 8];
+    event_mask >>= 4 * (gpio % 8);
+    printf("  inte:        0x%02lx\n", event_mask & 0xf);
     uint32_t status = irq_ctrl_base->ints[gpio / 8];
     status >>= 4 * (gpio % 8);
     printf("  ints:        0x%02lx\n", status & 0xf);

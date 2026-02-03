@@ -17,6 +17,7 @@ target_sources(morelib_rp2 INTERFACE
     random.c
     sdcard.c
     spi.c
+    spidev.c
     term_uart.c
     time.c
 )

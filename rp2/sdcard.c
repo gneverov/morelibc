@@ -250,8 +250,8 @@ static const struct vfs_file_vtable sdcard_vtable = {
 };
 
 static void *sdcard_open(const void *ctx, dev_t dev, int flags) {
-    uint spi_num = minor(dev) >> 7;
-    uint cs_pin = minor(dev) & 0x7f;
+    uint spi_num = minor(dev) >> 6;
+    uint cs_pin = minor(dev) & 0x3f;
     if ((spi_num >= NUM_SPIS) || (cs_pin >= NUM_BANK0_GPIOS)) {
         errno = EINVAL;
         return NULL;

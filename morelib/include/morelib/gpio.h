@@ -133,7 +133,7 @@ struct gpio_v2_line_event {
  */
 
 /* Chip device IOCTLs (on /dev/gpiochipX file descriptor) */
-#define GPIO_IOCTL_BASE 0xB4
+#define GPIO_IOCTL_BASE 0xB400
 
 // Get the publicly available information for a chip.
 // param: struct gpiochip_info *

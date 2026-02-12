@@ -77,6 +77,9 @@ _finally:
 }
 
 static err_t tud_network_lwip_output(struct netif *netif, struct pbuf *p) {
+    if (!netif_is_link_up(netif)) {
+        return ERR_IF;
+    }
     if (!xSemaphoreTake(tx_queue_mutex, portMAX_DELAY)) {
         return ERR_IF;
     }
@@ -166,6 +169,9 @@ uint16_t tud_network_xmit_cb(uint8_t *dst, void *ref, uint16_t arg) {
 }
 
 void tud_network_init_cb(void) {
+    if (!tx_queue_mutex) {
+        tud_network_init();
+    }
     if (!xSemaphoreTake(tx_queue_mutex, portMAX_DELAY)) {
         return;
     }

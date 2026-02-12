@@ -86,6 +86,11 @@ enum {
     DEV_MTDBLK2 = 0xEA02,
     DEV_MTDBLK3 = 0xEA03,
 
+    // I2C device numbers: major 0x59, minor = bus number
+    // Device: /dev/i2c-0, /dev/i2c-1
+    DEV_I2C0 = 0x5900,  // /dev/i2c-0 (bus 0)
+    DEV_I2C1 = 0x5901,  // /dev/i2c-1 (bus 1)
+
     // SPI device numbers: major 0x99, minor = (bus << 6) | cs_pin
     // Bits 7-6 of minor: SPI bus (0-3), Bits 5-0: CS GPIO pin (0-63)
     DEV_SPIDEV0 = 0x9900,  // spidev0.0 (bus 0, CS pin 0)

@@ -9,6 +9,8 @@ target_sources(morelib_rp2 INTERFACE
 	flash_lockout.c
     gpio.c
     gpiodev.c
+    i2c.c
+    i2cdev.c
     irq.c
     mtd.c
     pio.c
@@ -29,6 +31,7 @@ target_link_libraries(morelib_rp2 INTERFACE
 	hardware_dma
 	hardware_flash
 	hardware_gpio
+	hardware_i2c
 	hardware_irq
 	hardware_pio
 	hardware_pwm

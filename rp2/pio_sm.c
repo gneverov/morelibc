@@ -35,7 +35,11 @@ static int rp2_pio_chip_ioctl(void *ctx, unsigned long request, va_list args) {
             info->num_pios = NUM_PIOS;
             info->num_state_machines = NUM_PIO_STATE_MACHINES;
             info->pio_version = PICO_PIO_VERSION;
+            #if PICO_PIO_VERSION > 0
             info->use_gpio_base = PICO_PIO_USE_GPIO_BASE;
+            #else
+            info->use_gpio_base = 0;
+            #endif
             return 0;
         }
         case RP2_PIO_SM_OPEN_IOCTL: {

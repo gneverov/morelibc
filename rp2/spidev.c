@@ -18,8 +18,8 @@
 #include "hardware/spi.h"
 #include "pico/time.h"
 
+#include "linux/spi/spidev.h"
 #include "morelib/dev.h"
-#include "morelib/spidev.h"
 #include "morelib/vfs.h"
 #include "rp2/spi.h"
 

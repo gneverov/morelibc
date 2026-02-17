@@ -19,7 +19,7 @@
 #include "hardware/gpio.h"
 #include "pico/time.h"
 
-#include "morelib/gpio.h"
+#include "linux/gpio.h"
 #include "morelib/poll.h"
 #include "morelib/ring.h"
 #include "rp2/gpio.h"

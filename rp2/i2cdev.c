@@ -14,8 +14,8 @@
 
 #include "hardware/i2c.h"
 
+#include "linux/i2cdev.h"
 #include "morelib/dev.h"
-#include "morelib/i2cdev.h"
 #include "morelib/vfs.h"
 #include "rp2/i2c.h"
 
